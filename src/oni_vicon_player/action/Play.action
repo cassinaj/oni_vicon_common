@@ -1,0 +1,11 @@
+string record_path
+---
+
+---
+bool playing
+float64 total_time
+uint64 total_vicon_frames
+uint64 total_depth_sensor_frames
+float64 current_time
+uint64 current_vicon_frame
+uint64 current_depth_sensor_frame
