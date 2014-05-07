@@ -1,3 +1,5 @@
+string ACTION_NAME=/oni_vicon_player/Play
+
 string record_path
 ---
 

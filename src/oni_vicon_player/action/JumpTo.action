@@ -1,3 +1,4 @@
+string ACTION_NAME=/oni_vicon_player/JumpTo
 
 int8 SOURCE_TIME = 0
 int8 SOURCE_VICON_FRAME = 1
