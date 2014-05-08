@@ -192,12 +192,9 @@ void OniPlayer::publishXYZPointCloud(ros::Time time)
   points->fields[1].name = "y";
   points->fields[2].name = "z";
   int offset = 0;
-  for (size_t d = 0;
-       d < points->fields.size ();
-       ++d, offset += sizeof(float)) {
+  for (size_t d = 0; d < points->fields.size (); ++d, offset += sizeof(float)) {
     points->fields[d].offset = offset;
-    points->fields[d].datatype =
-      sensor_msgs::PointField::FLOAT32;
+    points->fields[d].datatype = sensor_msgs::PointField::FLOAT32;
     points->fields[d].count  = 1;
   }
 
@@ -270,3 +267,122 @@ sensor_msgs::CameraInfoPtr OniPlayer::fillCameraInfo (ros::Time time, bool is_rg
 
   return info_msg;
 }
+
+/*
+ *
+ *
+int main(int argc, char* argv[])
+{
+    if(argc < 2 )
+    {
+        std::cout << ">> Error: missing file argument!" << std::endl;
+        return -1;
+    }
+
+    // initialize rainbow coloring
+    rainbow_init();
+
+    Context context;
+    int nRetVal = context.Init();
+    CHECK_RC(nRetVal, "Init");
+
+    std::string sourceFile = argv[1];
+
+    Player player;
+    context.OpenFileRecording( sourceFile.c_str(), player );
+
+    DepthGenerator depthGenerator;
+    depthGenerator.Create(context);
+
+    XnUInt32 uFrames;
+    player.GetNumFrames( depthGenerator.GetName(), uFrames );
+    std::cout << "Total " << uFrames << " frames" << std::endl;
+
+    // create window / gui
+    std::string windowName = "Kinect Display";
+    cv::namedWindow(windowName, 1);
+    int tbPos;
+    cv::createTrackbar("MyTrackbar", windowName, &tbPos, uFrames);
+    cv::createButton("button6", callbackButton2, NULL, cv::QT_PUSH_BUTTON, 1);
+    cv::createButton("button6", callbackButton2, NULL, cv::QT_RADIOBOX, 1);
+    cv::createButton("button6", callbackButton2, NULL, cv::QT_CHECKBOX, 1);
+    cv::createButton("button6", callbackButton2, NULL, cv::QT_CHECKBOX, 1);
+    cv::displayOverlay(windowName, "some stuff to display overlayed");
+
+
+    // create the test images
+    cv::Mat depth_image(KINECT_IMAGE_ROWS, KINECT_IMAGE_COLS, CV_8UC3);
+    cv::Mat display(KINECT_IMAGE_ROWS, KINECT_IMAGE_COLS, CV_8UC3);
+    uint16_t *depth_buffer = (uint16_t*)calloc(1,KINECT_IMAGE_COLS*KINECT_IMAGE_ROWS*sizeof(uint16_t));
+    cv::Rect rect;
+
+    context.StartGeneratingAll();
+
+    const int ESC=27;
+    char pressed_key = 0;
+    uint8_t *dst;
+    uint16_t val, min_val, max_val;
+    DepthMetaData xDepthMap;
+
+    player.SetPlaybackSpeed(1.0);
+
+    //for( unsigned int i = 0; i < uFrames; ++ i )
+    while(true)
+    {
+        player.SeekToFrame(depthGenerator.GetName(), tbPos, XN_PLAYER_SEEK_SET);
+
+        depthGenerator.WaitAndUpdateData();
+
+        // get value
+        depthGenerator.GetMetaData( xDepthMap );
+        //cout << "Frame " << uFrames << ", frameID " << xDepthMap.FrameID() << ", timestamp " << xDepthMap.Timestamp() << endl;
+
+        memcpy(depth_buffer, (char*)xDepthMap.Data(), sizeof(uint16_t) * KINECT_IMAGE_COLS * KINECT_IMAGE_ROWS);
+
+        min_val = 65535;
+        max_val = 0;
+        for(int i=0; i<KINECT_IMAGE_ROWS; i++)
+        {
+            for(int j=0; j<KINECT_IMAGE_COLS; j++)
+            {
+                val = depth_buffer[i*KINECT_IMAGE_COLS + j];
+                if(val < min_val)
+                    min_val = val;
+                if(val > max_val)
+                    max_val = val;
+            }
+        }
+
+        for(int i=0; i<KINECT_IMAGE_ROWS; i++)
+        {
+            for(int j=0; j<KINECT_IMAGE_COLS; j++)
+            {
+                dst = (uint8_t*)(&depth_image.data[i*KINECT_IMAGE_COLS*3 + j*3]);
+                val = depth_buffer[i*KINECT_IMAGE_COLS + j];
+                rainbow_set(dst, (max_val - val)*1.0, min_val*1.0, max_val*1.0);
+            }
+        }
+
+        // form the display image
+        display = cv::Scalar(0);
+        rect.x = 0;
+        rect.y = 0;
+        rect.width = KINECT_IMAGE_COLS;
+        rect.height = KINECT_IMAGE_ROWS;
+        cv::Mat roi_depth(display, rect);
+        depth_image.convertTo(roi_depth, roi_depth.type(), 1, 0);
+
+        pressed_key = cv::waitKey(2);
+        if(pressed_key == ESC)
+        {
+            break;
+        }
+        cv::imshow(windowName, display);
+    }
+
+    context.StopGeneratingAll();
+    context.Release();
+
+    return 0;
+}
+*/
