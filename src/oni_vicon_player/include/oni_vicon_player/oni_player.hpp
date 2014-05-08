@@ -48,11 +48,16 @@
 #ifndef ONI_VICON_PLAYER_ONI_PLAYER_HPP
 #define ONI_VICON_PLAYER_ONI_PLAYER_HPP
 
+#include <boost/thread/mutex.hpp>
+
 #include <ros/ros.h>
 #include <image_transport/image_transport.h>
 #include <sensor_msgs/CameraInfo.h>
 #include <stereo_msgs/DisparityImage.h>
 #include <sensor_msgs/image_encodings.h>
+
+#define KINECT_IMAGE_COLS       640
+#define KINECT_IMAGE_ROWS       480
 
 namespace oni_vicon_player
 {
@@ -61,8 +66,10 @@ namespace oni_vicon_player
     public:
         OniPlayer();
         ~OniPlayer();
+
+        bool process();
     private:
-        ros::NodeHandle priv_nh_;
+        ros::NodeHandle node_handle_;
 
         image_transport::ImageTransport* it_;
 
@@ -78,7 +85,6 @@ namespace oni_vicon_player
         // Publishers Images
         image_transport::Publisher pub_depth_image_;
         // Publishers Point Clouds
-        ros::Publisher pub_disp_image_;
         ros::Publisher pub_point_cloud_;
 
         std::string rgb_frame_id_;
@@ -87,7 +93,25 @@ namespace oni_vicon_player
         unsigned image_height_;
         unsigned depth_width_;
         unsigned depth_height_;
+
+        inline bool isImageStreamRequired() const;
+        inline bool isDepthStreamRequired() const;
+        sensor_msgs::CameraInfoPtr fillCameraInfo (ros::Time time, bool is_rgb);
+
+        void subscriberChangedEvent ();
+
+        // publish methods
+        void publishDepthImage (ros::Time time);
+        void publishXYZPointCloud (ros::Time time);
+
+        boost::mutex capture_mutex_;
     };
+
+    bool OniPlayer::isDepthStreamRequired() const
+    {
+        return (pub_depth_image_.getNumSubscribers() > 0
+                || pub_point_cloud_.getNumSubscribers() > 0);
+    }
 }
 
 #endif
