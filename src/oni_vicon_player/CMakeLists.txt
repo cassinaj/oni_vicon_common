@@ -9,7 +9,10 @@ find_package(catkin REQUIRED
     std_msgs
     message_generation
     actionlib_msgs
-    actionlib)
+    actionlib
+    depth_sensor_vicon_calibration
+    image_transport
+)
 
 find_package(Boost REQUIRED)
 include_directories(${Boost_INCLUDE_DIRS})
@@ -37,8 +40,8 @@ include_directories(${Boost_INCLUDE_DIRS})
 add_action_files(
   DIRECTORY action
   FILES
+  Open.action
   Play.action
-  JumpTo.action
 )
 
 ## Generate added messages and services with any dependencies listed here
@@ -52,8 +55,8 @@ generate_messages(
 ###################################
 catkin_package(
     INCLUDE_DIRS include
-    LIBRARIES oni_vicon_recorder
-    CATKIN_DEPENDS actionlib_msgs actionlib
+    LIBRARIES oni_vicon_player
+    CATKIN_DEPENDS actionlib_msgs actionlib depth_sensor_vicon_calibration image_transport
     DEPENDS OpenNI
 )
 
@@ -78,14 +81,20 @@ include_directories(include
     "/usr/include/ni/" # FIXME superbly uggly
 )
 
-#add_library(oni_vicon_player ${oni_vicon_player_SOURCES} ${oni_vicon_player_HEADERS})
-#target_link_libraries(oni_vicon_player
-#    ${catkin_LIBRARIES}
-#    OpenNI
-#    ${OpenCV_LIBS}
-#    ${Boost_LIBRARIES}
-#    yaml-cpp
-#)
+add_library(oni_vicon_player ${oni_vicon_player_SOURCES} ${oni_vicon_player_HEADERS})
+target_link_libraries(oni_vicon_player
+    ${catkin_LIBRARIES}
+    OpenNI
+    ${OpenCV_LIBS}
+    ${Boost_LIBRARIES}
+)
+
+add_executable(oni_vicon_player_node src/${PROJECT_NAME}/oni_vicon_player_node.cpp)
+target_link_libraries(oni_vicon_player_node
+    oni_vicon_player
+    ${catkin_LIBRARIES}
+    OpenNI
+)
 
 #############
 ## Install ##
