@@ -55,11 +55,11 @@
 #include <sensor_msgs/CameraInfo.h>
 #include <stereo_msgs/DisparityImage.h>
 #include <sensor_msgs/image_encodings.h>
+#include <sensor_msgs/PointCloud2.h>
 
 #include <ni/XnCppWrapper.h>
 
-#define KINECT_IMAGE_COLS       640
-#define KINECT_IMAGE_ROWS       480
+#include <depth_sensor_vicon_calibration/transform.hpp>
 
 namespace oni_vicon_player
 {
@@ -73,79 +73,62 @@ namespace oni_vicon_player
             float z;
         };
 
-
-
     public:
-        OniPlayer();
+        OniPlayer(const ros::NodeHandle &node_handle, const std::string &depth_frame_id);
         ~OniPlayer();
 
-        bool init();
+        bool open(const std::string &source_file);
         bool process();
-        bool shutdown();
+        bool close();
+
+        XnUInt32 currentFrame() const;
+        XnUInt32 countFrames() const;
+
+    private: /* implementation details */
+        inline bool isDepthStreamRequired() const;
+        void publishDepthImage(ros::Time time);
+        void publishXYZPointCloud(ros::Time time);
 
         void toMsgImage(const xn::DepthMetaData& depth_meta_data,
                         sensor_msgs::ImagePtr image) const;
-
         void toMsgPointCloud(const sensor_msgs::ImagePtr& image,
                              sensor_msgs::PointCloud2Ptr points);
 
-        float toFloat(const XnDepthPixel& depth_pixel) const;
+        float toMeter(const XnDepthPixel& depth_pixel) const;
         Point3d toPoint3d(const XnDepthPixel& depth_pixel, float x, float y) const;
+
     private:
+        /* ros publisher */
         ros::NodeHandle node_handle_;
+        image_transport::ImageTransport image_transport_;
+        image_transport::Publisher pub_depth_image_;
+        ros::Publisher pub_point_cloud_;
+        ros::Publisher pub_depth_info_;
 
-        image_transport::ImageTransport* it_;
-
-        std::string camera_name_;
-        std::string frame_id_;
-
-        sensor_msgs::Image gray_image_;
-
+        /* publishing data */
+        std::string depth_frame_id_;
         sensor_msgs::CameraInfo depth_cam_info_;
 
-        // Publishers Camera Info
-        ros::Publisher pub_depth_info_;
-        // Publishers Images
-        image_transport::Publisher pub_depth_image_;
-        // Publishers Point Clouds
-        ros::Publisher pub_point_cloud_;
-
-        std::string rgb_frame_id_;
-        std::string depth_frame_id_;
-        unsigned image_width_;
-        unsigned image_height_;
-        unsigned depth_width_;
-        unsigned depth_height_;
-
-        inline bool isImageStreamRequired() const;
-        inline bool isDepthStreamRequired() const;
-        sensor_msgs::CameraInfoPtr fillCameraInfo (ros::Time time, bool is_rgb);
-
-        void subscriberChangedEvent ();
-
-        // publish methods
-        void publishDepthImage (ros::Time time);
-        void publishXYZPointCloud (ros::Time time);
-
-        boost::mutex capture_mutex_;
-
-        std::string source_file_;
+        /* OpenNI player */
         xn::Context context_;
         xn::Player player_;
         xn::DepthGenerator depth_generator_;
         XnUInt64 no_sample_value_;
         XnUInt64 shadow_value_;
 
+        /* frame data */
         xn::DepthMetaData depth_meta_data_;
         XnUInt32 frames_;
         XnUInt32 current_frame_;
-        bool paused_;
+        depth_sensor_vicon_calibration::CalibrationTransform::CameraIntrinsics camera_intrinsics_;
+
+        boost::mutex capture_mutex_;
     };
 
     bool OniPlayer::isDepthStreamRequired() const
     {
-        return (pub_depth_image_.getNumSubscribers() > 0
-                || pub_point_cloud_.getNumSubscribers() > 0);
+        return (pub_depth_image_.getNumSubscribers() > 0 ||
+                pub_point_cloud_.getNumSubscribers() > 0);
     }
 }
 

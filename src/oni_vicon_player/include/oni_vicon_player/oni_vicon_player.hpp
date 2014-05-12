@@ -51,6 +51,14 @@
 #include "oni_vicon_player/oni_player.hpp"
 #include "oni_vicon_player/vicon_player.hpp"
 
+#include <boost/thread/mutex.hpp>
+
+#include <depth_sensor_vicon_calibration/transform.hpp>
+
+#include <oni_vicon_player/OpenAction.h>
+#include <oni_vicon_player/PlayAction.h>
+#include <actionlib/server/simple_action_server.h>
+
 namespace oni_vicon_player
 {
     class OniViconPlayer
@@ -59,9 +67,22 @@ namespace oni_vicon_player
         OniViconPlayer(OniPlayer& oni_player,
                        ViconPlayer& vicon_player);
         ~OniViconPlayer();
+
+        void playCb(const PlayGoalConstPtr& goal);
+        void openCb(const OpenGoalConstPtr& goal);
+
+        void run();
     private:
+        boost::mutex player_lock_;
+
         OniPlayer& oni_player_;
-        ViconPlayer& vicon_player_;
+        ViconPlayer& vicon_player_;        
+
+        actionlib::SimpleActionServer<OpenAction> open_as_;
+        actionlib::SimpleActionServer<PlayAction> play_as_;
+
+        bool open_;
+        bool playing_;
     };
 }
 

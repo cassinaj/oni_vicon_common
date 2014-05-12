@@ -44,154 +44,113 @@
  *   Karlsruhe Institute of Technology (KIT)
  */
 
-#include <sensor_msgs/PointCloud2.h>
-#include <stereo_msgs/DisparityImage.h>
-#include <sensor_msgs/image_encodings.h>
 #include <string>
-#include <yaml-cpp/yaml.h>
 
 #include "oni_vicon_player/oni_player.hpp"
 
-#define CHECK_RC(rc, what)									    \
+#define CHECK_RC(rc)									    \
 if (rc != XN_STATUS_OK)											\
 {																\
-    ROS_ERROR("%s failed: %s\n", what, xnGetStatusString(rc));  \
+    ROS_ERROR("%s failed: %s\n", #rc, xnGetStatusString(rc));  \
     return false;												\
 }
 
 using namespace oni_vicon_player;
 
-OniPlayer::OniPlayer():
-    image_width_(KINECT_IMAGE_COLS),
-    image_height_(KINECT_IMAGE_ROWS),
-    depth_width_(KINECT_IMAGE_COLS),
-    depth_height_(KINECT_IMAGE_ROWS),
-    paused_(false)
+OniPlayer::OniPlayer(const ros::NodeHandle& node_handle,
+                     const std::string& depth_frame_id):
+    node_handle_(node_handle),
+    image_transport_(node_handle),
+    depth_frame_id_(depth_frame_id)
 {
-    node_handle_ = ros::NodeHandle("~");
-
-    node_handle_.param ("rgb_frame_id", rgb_frame_id_, std::string (""));
-    if (rgb_frame_id_.empty ())
-    {
-        rgb_frame_id_ = "/camera_rgb_optical_frame";
-        ROS_INFO ("'rgb_frame_id' not set. using default: '%s'", rgb_frame_id_.c_str());
-    }
-    else
-    {
-        ROS_INFO ("rgb_frame_id = '%s' ", rgb_frame_id_.c_str());
-    }
-
-    node_handle_.param ("depth_frame_id", depth_frame_id_, std::string (""));
-    if (depth_frame_id_.empty ())
-    {
-        depth_frame_id_ = "/camera_depth_optical_frame";
-        ROS_INFO ("'depth_frame_id' not set. using default: '%s'", depth_frame_id_.c_str());
-    }
-    else
-    {
-        ROS_INFO ("depth_frame_id = '%s' ", depth_frame_id_.c_str());
-    }
-
-    // Init all publishers
-    it_ = new image_transport::ImageTransport(node_handle_);
-    pub_depth_image_ = it_->advertise ("depth/image", 5);
-
+    pub_depth_image_ = image_transport_.advertise("depth/image", 5);
     pub_depth_info_ = node_handle_.advertise<sensor_msgs::CameraInfo>("depth/camera_info", 5);
     pub_point_cloud_ = node_handle_.advertise<sensor_msgs::PointCloud2>("depth/points", 5);
-
 }
 
 OniPlayer::~OniPlayer()
 {
-
 }
 
-bool OniPlayer::init()
+bool OniPlayer::open(const std::string& source_file)
 {
-    CHECK_RC(context_.Init(), "Initialize xn::Context");
-    CHECK_RC(context_.OpenFileRecording(source_file_.c_str(), player_), "Opening ONI file");
-    CHECK_RC(depth_generator_.Create(context_), "Creating depth generator");
-    CHECK_RC(player_.GetNumFrames(depth_generator_.GetName(), frames_), "Get total number frames");
-    CHECK_RC(depth_generator_->GetIntProperty((XnChar*)"NoSampleValue", no_sample_value_),
-             "Get NoSampleValue");
-    CHECK_RC(depth_generator_->GetIntProperty((XnChar*)"ShadowValue", shadow_value_),
-             "Get ShadowValue");
-    CHECK_RC(context_.StartGeneratingAll(), "Start generating");
-    CHECK_RC(player_.SetPlaybackSpeed(1.0), "Set player speed");
+    ROS_INFO("Opening ONI");
+
+    CHECK_RC(context_.Init());
+    CHECK_RC(context_.OpenFileRecording(source_file.c_str(), player_));
+    CHECK_RC(depth_generator_.Create(context_));
+    CHECK_RC(player_.GetNumFrames(depth_generator_.GetName(), frames_));
+    CHECK_RC(depth_generator_.GetIntProperty((XnChar*)"NoSampleValue", no_sample_value_));
+    CHECK_RC(depth_generator_.GetIntProperty((XnChar*)"ShadowValue", shadow_value_));
+    CHECK_RC(context_.StartGeneratingAll());
+    CHECK_RC(player_.SetPlaybackSpeed(1.0));
+    CHECK_RC(player_.SetRepeat(false));
+
+    ROS_INFO("ONI file <%s> loaded", source_file.c_str());
+
+    return true;
 }
 
 bool OniPlayer::process()
 {
     boost::mutex::scoped_lock lock(capture_mutex_);
 
-    if (paused_)
-    {
-        //player_.SeekToFrame(depth_generator_.GetName(), current_frame_, XN_PLAYER_SEEK_SET);
-        return true;
-    }
-
-    if (pub_depth_image_.getNumSubscribers () > 0
-            || pub_point_cloud_.getNumSubscribers () > 0)
-    {
-        CHECK_RC(depth_generator_.WaitAndUpdateData(), "Wait and update generator data");
+//    if (pub_depth_image_.getNumSubscribers () > 0 ||
+//        pub_point_cloud_.getNumSubscribers () > 0)
+//    {
+        CHECK_RC(depth_generator_.WaitAndUpdateData());
 
         if (!depth_generator_.IsDataNew()) // not sure yet if this required
         {
-            return true;
+            return !player_.IsEOF();
         }
 
-        // get depth and process them
+        // get depth frame
         depth_generator_.GetMetaData(depth_meta_data_);
 
-        // convert and publish depth map
-        sensor_msgs::ImagePtr depth_msg = boost::make_shared<sensor_msgs::Image> ();
+        current_frame_ = depth_meta_data_.FrameID();
+
+        // convert and publish depth image and cloudgitk
+        sensor_msgs::ImagePtr depth_msg = boost::make_shared<sensor_msgs::Image>();
         toMsgImage(depth_meta_data_, depth_msg);
-        pub_depth_image_.publish (depth_msg);
 
-        sensor_msgs::PointCloud2Ptr points_msg = boost::make_shared<sensor_msgs::PointCloud2> ();
-        toMsgImage(depth_msg, points_msg);
-    }
+        //sensor_msgs::PointCloud2Ptr points_msg = boost::make_shared<sensor_msgs::PointCloud2>();
+        //toMsgPointCloud(depth_msg, points_msg);
 
-
-
-
-
-
-
-
-    if(kinect_capture(device_)!=0)
-    {
-        ROS_ERROR("Error during capture!\n");
-        return false;
-    }
-
-    ros::Time time = ros::Time::now ();
-
-    if(device_->depth_dirty)
-    {
-        if (pub_depth_info_.getNumSubscribers () > 0)
-        {
-            pub_depth_info_.publish (fillCameraInfo (time, false));
-        }
+        // pub_depth_info_.publish (); // publish camera info
 
         if (pub_depth_image_.getNumSubscribers () > 0)
         {
-            publishDepthImage(time);
+            pub_depth_image_.publish(depth_msg);
         }
 
         if (pub_point_cloud_.getNumSubscribers () > 0)
         {
-            publishXYZPointCloud(time);
+            //publishXYZPointCloud(ros::Time::now());
         }
-    }
+//    }
 
-    ros::spinOnce();
-
-    return true;
+    return !player_.IsEOF();
 }
 
-bool OniPlayer::shutdown()
+bool OniPlayer::close()
 {
+    ROS_INFO("Closing ONI player");
+
+    player_.Release();
+    depth_generator_.Release();
+    context_.StopGeneratingAll();
+    context_.Release();
+}
+
+XnUInt32 OniPlayer::currentFrame() const
+{
+    return current_frame_;
+}
+
+XnUInt32 OniPlayer::countFrames() const
+{
+    return frames_;
 }
 
 void OniPlayer::toMsgImage(const xn::DepthMetaData& depth_meta_data,
@@ -202,7 +161,7 @@ void OniPlayer::toMsgImage(const xn::DepthMetaData& depth_meta_data,
 
     image->header.stamp         = time;
     // all depth data is relative to the rgb frame since we take registered data by default
-    image->header.frame_id      = rgb_frame_id_;
+    image->header.frame_id      = depth_frame_id_;
     image->encoding             = sensor_msgs::image_encodings::TYPE_32FC1;
     image->height               = depth_meta_data.YRes();
     image->width                = depth_meta_data.XRes();
@@ -210,13 +169,13 @@ void OniPlayer::toMsgImage(const xn::DepthMetaData& depth_meta_data,
     image->data.resize (image->height * image->step);
 
     // copy data
-    float* data = reinterpret_cast<float*>(&image->data[0]);
 
+    float* data = reinterpret_cast<float*>(&image->data[0]);    
     for (unsigned int i = 0; i < image->height; i++)
     {
         for (unsigned int j = 0, k = 0; j < image->width; j++, k += image->step, data++)
         {
-            *data = toFloat(depth_meta_data[k]);
+            *data = toMeter(depth_meta_data[i * image->width + j]);
         }
     }
 }
@@ -311,7 +270,7 @@ void OniPlayer::toMsgPointCloud(const sensor_msgs::ImagePtr& image,
     }
 }
 
-float OniPlayer::toFloat(const XnDepthPixel& depth_pixel) const
+float OniPlayer::toMeter(const XnDepthPixel& depth_pixel) const
 {
     static float bad_point = std::numeric_limits<float>::quiet_NaN();
 
@@ -320,7 +279,7 @@ float OniPlayer::toFloat(const XnDepthPixel& depth_pixel) const
         return bad_point;
     }
 
-    return (float) depth_pixel;
+    return float(depth_pixel) * 1e-3f;
 }
 
 OniPlayer::Point3d OniPlayer::toPoint3d(const XnDepthPixel& depth_pixel, float x, float y) const
@@ -336,8 +295,8 @@ OniPlayer::Point3d OniPlayer::toPoint3d(const XnDepthPixel& depth_pixel, float x
     }
 
     point.z = float(depth_pixel) * 1e-3f;
-    point.x = (x - camera_intrinsics_.center.x) * point.z / camera_intrinsics_.focal_length;
-    point.y = (y - camera_intrinsics_.center.y) * point.z / camera_intrinsics_.focal_length;
+    point.x = (x - camera_intrinsics_.cx) * point.z / camera_intrinsics_.f;
+    point.y = (y - camera_intrinsics_.cy) * point.z / camera_intrinsics_.f;
 
     return point;
 }
@@ -345,7 +304,7 @@ OniPlayer::Point3d OniPlayer::toPoint3d(const XnDepthPixel& depth_pixel, float x
 
 void OniPlayer::publishXYZPointCloud(ros::Time time)
 {
-
+/*
   sensor_msgs::ImagePtr depth_msg = boost::make_shared<sensor_msgs::Image > ();
   depth_msg->header.stamp         = time;
   // all depth data is relative to the rgb frame since we take registered data by default
@@ -407,11 +366,6 @@ void OniPlayer::publishXYZPointCloud(ros::Time time)
       memcpy (&points->data[i * points->row_step + j * points->point_step + points->fields[2].offset],
           &point_buffer[i*KINECT_IMAGE_COLS*3 + j*3 + 2], sizeof (float));
 
-      /*
-      std::cout << "x y z " << point_buffer[i*KINECT_IMAGE_COLS*3 + j*3 + 0] << " "
-            << point_buffer[i*KINECT_IMAGE_COLS*3 + j*3 + 1] << " "
-                << point_buffer[i*KINECT_IMAGE_COLS*3 + j*3 + 2] << " " << std::endl;
-      */
     }
     }
 
@@ -419,42 +373,9 @@ void OniPlayer::publishXYZPointCloud(ros::Time time)
     pub_point_cloud_.publish (points);
 
   free(point_buffer);
+  */
 }
 
-
-sensor_msgs::CameraInfoPtr OniPlayer::fillCameraInfo (ros::Time time, bool is_rgb)
-{
-  sensor_msgs::CameraInfoPtr info_msg = boost::make_shared<sensor_msgs::CameraInfo > ();
-  info_msg->header.stamp    = time;
-  info_msg->header.frame_id = is_rgb ? rgb_frame_id_ : depth_frame_id_;
-  info_msg->width           = is_rgb ? image_width_ : depth_width_;
-  info_msg->height          = is_rgb ? image_height_ : depth_height_;
-
-#if ROS_VERSION_MINIMUM(1, 3, 0)
-  info_msg->D = std::vector<double>(5, 0.0);
-  info_msg->distortion_model = sensor_msgs::distortion_models::PLUMB_BOB;
-#else
-  info_msg->D.assign (0.0);
-#endif
-  info_msg->K.assign (0.0);
-  info_msg->R.assign (0.0);
-  info_msg->P.assign (0.0);
-  // Simple camera matrix: square pixels, principal point at center
-  double f = is_rgb ? device_->params.rgb_focal_length : device_->params.ir_focal_length;
-  info_msg->K[0] = info_msg->K[4] = f;
-  info_msg->K[2] = is_rgb ?  device_->params.rgb_camera_center.x : device_->params.ir_camera_center.x;
-  info_msg->K[5] = is_rgb ?  device_->params.rgb_camera_center.y : device_->params.ir_camera_center.y;
-  info_msg->K[8] = 1.0;
-  // no rotation: identity
-  info_msg->R[0] = info_msg->R[4] = info_msg->R[8] = 1.0;
-  // no rotation, no translation => P=K(I|0)=(K|0)
-  info_msg->P[0] = info_msg->P[5] = info_msg->K[0];
-  info_msg->P[2] = info_msg->K[2];
-  info_msg->P[6] = info_msg->K[5];
-  info_msg->P[10] = 1.0;
-
-  return info_msg;
-}
 
 /*
  *
