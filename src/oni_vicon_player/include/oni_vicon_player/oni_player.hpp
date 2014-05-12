@@ -56,6 +56,8 @@
 #include <stereo_msgs/DisparityImage.h>
 #include <sensor_msgs/image_encodings.h>
 
+#include <ni/XnCppWrapper.h>
+
 #define KINECT_IMAGE_COLS       640
 #define KINECT_IMAGE_ROWS       480
 
@@ -64,10 +66,31 @@ namespace oni_vicon_player
     class OniPlayer
     {
     public:
+        struct Point3d
+        {
+            float x;
+            float y;
+            float z;
+        };
+
+
+
+    public:
         OniPlayer();
         ~OniPlayer();
 
+        bool init();
         bool process();
+        bool shutdown();
+
+        void toMsgImage(const xn::DepthMetaData& depth_meta_data,
+                        sensor_msgs::ImagePtr image) const;
+
+        void toMsgPointCloud(const sensor_msgs::ImagePtr& image,
+                             sensor_msgs::PointCloud2Ptr points);
+
+        float toFloat(const XnDepthPixel& depth_pixel) const;
+        Point3d toPoint3d(const XnDepthPixel& depth_pixel, float x, float y) const;
     private:
         ros::NodeHandle node_handle_;
 
@@ -105,6 +128,18 @@ namespace oni_vicon_player
         void publishXYZPointCloud (ros::Time time);
 
         boost::mutex capture_mutex_;
+
+        std::string source_file_;
+        xn::Context context_;
+        xn::Player player_;
+        xn::DepthGenerator depth_generator_;
+        XnUInt64 no_sample_value_;
+        XnUInt64 shadow_value_;
+
+        xn::DepthMetaData depth_meta_data_;
+        XnUInt32 frames_;
+        XnUInt32 current_frame_;
+        bool paused_;
     };
 
     bool OniPlayer::isDepthStreamRequired() const

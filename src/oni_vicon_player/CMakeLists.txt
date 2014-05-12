@@ -78,14 +78,14 @@ include_directories(include
     "/usr/include/ni/" # FIXME superbly uggly
 )
 
-add_library(oni_vicon_player ${oni_vicon_player_SOURCES} ${oni_vicon_player_HEADERS})
-target_link_libraries(oni_vicon_player
-    ${catkin_LIBRARIES}
-    OpenNI
-    ${OpenCV_LIBS}
-    ${Boost_LIBRARIES}
-    yaml-cpp
-)
+#add_library(oni_vicon_player ${oni_vicon_player_SOURCES} ${oni_vicon_player_HEADERS})
+#target_link_libraries(oni_vicon_player
+#    ${catkin_LIBRARIES}
+#    OpenNI
+#    ${OpenCV_LIBS}
+#    ${Boost_LIBRARIES}
+#    yaml-cpp
+#)
 
 #############
 ## Install ##
