@@ -49,8 +49,11 @@
 #include <boost/filesystem.hpp>
 
 using namespace oni_vicon_player;
+using namespace depth_sensor_vicon_calibration;
 
-OniViconPlayer::OniViconPlayer(OniPlayer& oni_player, ViconPlayer& vicon_player):
+OniViconPlayer::OniViconPlayer(ros::NodeHandle& node_handle,
+                               OniPlayer& oni_player,
+                               ViconPlayer& vicon_player):
     oni_player_(oni_player),
     vicon_player_(vicon_player),
     open_as_(OpenGoal::ACTION_NAME,
@@ -60,8 +63,22 @@ OniViconPlayer::OniViconPlayer(OniPlayer& oni_player, ViconPlayer& vicon_player)
              boost::bind(&OniViconPlayer::playCb, this, _1),
              false),
     open_(false),
-    playing_(false)
-{    
+    playing_(false),
+    paused_(false)
+{
+    pause_srv_ = node_handle.advertiseService(Pause::Request::SERVICE_NAME,
+                                              &OniViconPlayer::pauseCb,
+                                              this);
+
+    seek_frame_srv_ = node_handle.advertiseService(SeekFrame::Request::SERVICE_NAME,
+                                                   &OniViconPlayer::seekFrameCb,
+                                                   this);
+
+    set_playback_speed_srv_ = node_handle.advertiseService(SetPlaybackSpeed::Request::SERVICE_NAME,
+                                                           &OniViconPlayer::setPlaybackSpeedCb,
+                                                           this);
+
+
 }
 
 OniViconPlayer::~OniViconPlayer()
@@ -78,22 +95,28 @@ void OniViconPlayer::run()
 
 void OniViconPlayer::playCb(const PlayGoalConstPtr& goal)
 {
-    //oni_player_.init(goal->record_path);
+    playing_ = true;
 
     PlayFeedback feedback;
     feedback.playing = true;
     feedback.current_time = 0;
     feedback.current_vicon_frame = 0;
-    feedback.current_depth_sensor_frame = 0;
+    feedback.current_depth_sensor_frame = seeking_frame_;
+    oni_player_.seekToFrame(seeking_frame_);
 
     play_as_.publishFeedback(feedback);
 
-    while (ros::ok() && !play_as_.isPreemptRequested())
+    while (ros::ok() && !play_as_.isPreemptRequested() && playing_)
     {
-        if (!oni_player_.process())
+        if (paused_)
         {
-            play_as_.setAborted();
-            return;
+            oni_player_.seekToFrame(seeking_frame_);
+        }
+
+        boost::mutex::scoped_lock lock(player_lock_);
+        if (!oni_player_.process(ros::Time::now()))
+        {
+            break;
         }
 
         feedback.current_time = oni_player_.currentFrame()/30.;
@@ -102,17 +125,17 @@ void OniViconPlayer::playCb(const PlayGoalConstPtr& goal)
         play_as_.publishFeedback(feedback);
     }
 
+    paused_ = false;
+    playing_ = false;
+    oni_player_.seekToFrame(0);
     play_as_.setSucceeded();
 }
 
 void OniViconPlayer::openCb(const OpenGoalConstPtr& goal)
 {
-    boost::mutex::scoped_lock lock(player_lock_);
-
     OpenResult result;
     OpenFeedback feedback;
     feedback.progress_max = 100;
-
 
     boost::filesystem::path record_path = goal->record_path;
     std::string recording_name = record_path.leaf().string();
@@ -122,7 +145,25 @@ void OniViconPlayer::openCb(const OpenGoalConstPtr& goal)
     std::string global_calib_file = (record_path / "global_calibration.yaml").string();
     std::string local_calib_file = (record_path / "local_calibration.yaml").string();
 
-    if (!oni_player_.open(oni_file))
+    // Create calibration transform from calibration files
+    CalibrationTransform calibration_transform;
+
+    if (!calibration_transform.loadGlobalCalibration(global_calib_file))
+    {
+        result.message = "Loading global calibration file <" + global_calib_file + "> failed";
+        open_as_.setAborted(result);
+        return;
+    }
+
+    if (!calibration_transform.loadLocalCalibration(local_calib_file))
+    {
+        result.message = "Loading local calibration file <" + local_calib_file + "> failed";
+        open_as_.setAborted(result);
+        return;
+    }
+
+    // open player using the oni file and the camera intrinsics from the calibration
+    if (!oni_player_.open(oni_file, calibration_transform.cameraIntrinsics()))
     {
         result.message = "Opening ONI file <" + oni_file + "> failed";
         open_as_.setAborted(result);
@@ -141,7 +182,7 @@ void OniViconPlayer::openCb(const OpenGoalConstPtr& goal)
     {
         if (feedback.progress < feedback.progress_max)
         {
-            feedback.progress++;
+            ++feedback.progress;
             feedback.open = (feedback.progress == feedback.progress_max);
             open_as_.publishFeedback(feedback);
         }
@@ -150,6 +191,35 @@ void OniViconPlayer::openCb(const OpenGoalConstPtr& goal)
     }
 
     result.message = "Record closed";
+
+    // stop player if playing
+    paused_ = false;
+    playing_ = false;
+    // wait till oni player processing is over (if the controller is implemented correctly, this
+    // should not be necessary)
+    boost::mutex::scoped_lock lock(player_lock_);
+
     oni_player_.close();
     open_as_.setSucceeded(result);
+}
+
+bool OniViconPlayer::pauseCb(Pause::Request& request, Pause::Response& response)
+{
+    seeking_frame_ = oni_player_.currentFrame();
+    paused_ = request.paused;
+
+    return true;
+}
+
+bool OniViconPlayer::seekFrameCb(SeekFrame::Request& request, SeekFrame::Response &response)
+{
+    //boost::mutex::scoped_lock lock(player_lock_);
+    seeking_frame_ = request.frame;
+    return playing_ && paused_ && oni_player_.seekToFrame(request.frame);
+}
+
+bool OniViconPlayer::setPlaybackSpeedCb(SetPlaybackSpeed::Request& request,
+                                        SetPlaybackSpeed::Response& response)
+{
+    return playing_ && paused_ && oni_player_.setPlaybackSpeed(request.speed);;
 }

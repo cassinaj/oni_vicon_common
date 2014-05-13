@@ -56,21 +56,24 @@ using namespace oni_vicon_player;
 int main(int argc, char **argv)
 {
     ros::init(argc, argv, "oni_vicon_recorder");
-    ros::NodeHandle nh;
+    ros::NodeHandle nh("~");
 
     /* Parameters */
     // calibration parameters with defaults
-    std::string depth_frame_id = "/XTION_RGB";
+    std::string depth_frame_id = "/XTION_IR";
     std::string camera_info_topic = "/XTION/depth/camera_info";
+    std::string point_cloud_topic = "/XTION/depth/camera_info";
 
     // load set parameters otherwise maintain defautls
-    //nh.param("/global_calibration/iterations", global_calib_iterations, global_calib_iterations);
+    nh.param("depth_frame_id", depth_frame_id, depth_frame_id);
+    nh.param("camera_info_topic", camera_info_topic, camera_info_topic);
+    nh.param("point_cloud_topic", point_cloud_topic, point_cloud_topic);
 
-    OniPlayer oni_player(nh, depth_frame_id);
+    OniPlayer oni_player(nh, depth_frame_id, camera_info_topic, point_cloud_topic);
 
     ViconPlayer vicon_player;
 
-    OniViconPlayer oni_vicon_player(oni_player, vicon_player);
+    OniViconPlayer oni_vicon_player(nh, oni_player, vicon_player);
 
     oni_vicon_player.run();
 

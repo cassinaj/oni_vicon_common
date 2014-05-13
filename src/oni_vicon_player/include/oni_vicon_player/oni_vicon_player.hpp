@@ -51,27 +51,48 @@
 #include "oni_vicon_player/oni_player.hpp"
 #include "oni_vicon_player/vicon_player.hpp"
 
+// boost
 #include <boost/thread/mutex.hpp>
 
+// ros
+#include <actionlib/server/simple_action_server.h>
+
+// depth_sensor_vicon_calibration
 #include <depth_sensor_vicon_calibration/transform.hpp>
 
+// actions
 #include <oni_vicon_player/OpenAction.h>
 #include <oni_vicon_player/PlayAction.h>
-#include <actionlib/server/simple_action_server.h>
+
+// services
+#include <oni_vicon_player/Pause.h>
+#include <oni_vicon_player/SeekFrame.h>
+#include <oni_vicon_player/SetPlaybackSpeed.h>
 
 namespace oni_vicon_player
 {
     class OniViconPlayer
     {
     public:
-        OniViconPlayer(OniPlayer& oni_player,
+        OniViconPlayer(ros::NodeHandle& node_handle,
+                       OniPlayer& oni_player,
                        ViconPlayer& vicon_player);
-        ~OniViconPlayer();
+        virtual ~OniViconPlayer();
 
+        void run();
+
+    public: /* action callbacks */
         void playCb(const PlayGoalConstPtr& goal);
         void openCb(const OpenGoalConstPtr& goal);
 
-        void run();
+    public: /* service callbacks */
+        bool pauseCb(Pause::Request& request,
+                     Pause::Response& response);
+        bool seekFrameCb(SeekFrame::Request& request,
+                         SeekFrame::Response& response);
+        bool setPlaybackSpeedCb(SetPlaybackSpeed::Request& request,
+                                SetPlaybackSpeed::Response& response);
+
     private:
         boost::mutex player_lock_;
 
@@ -81,8 +102,14 @@ namespace oni_vicon_player
         actionlib::SimpleActionServer<OpenAction> open_as_;
         actionlib::SimpleActionServer<PlayAction> play_as_;
 
+        ros::ServiceServer pause_srv_;
+        ros::ServiceServer seek_frame_srv_;
+        ros::ServiceServer set_playback_speed_srv_;
+
         bool open_;
         bool playing_;
+        bool paused_;
+        XnUInt32 seeking_frame_;
     };
 }
 
