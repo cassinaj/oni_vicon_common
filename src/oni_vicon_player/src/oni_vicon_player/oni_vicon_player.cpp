@@ -77,8 +77,6 @@ OniViconPlayer::OniViconPlayer(ros::NodeHandle& node_handle,
     set_playback_speed_srv_ = node_handle.advertiseService(SetPlaybackSpeed::Request::SERVICE_NAME,
                                                            &OniViconPlayer::setPlaybackSpeedCb,
                                                            this);
-
-
 }
 
 OniViconPlayer::~OniViconPlayer()
@@ -106,6 +104,11 @@ void OniViconPlayer::playCb(const PlayGoalConstPtr& goal)
 
     play_as_.publishFeedback(feedback);
 
+
+    // this is due to ros, which complains if the time stamps are small and interpreted as
+    // too old. ros merely throws them away. how cruel is that?!
+    ros::Time startup_time = ros::Time::now();
+
     while (ros::ok() && !play_as_.isPreemptRequested() && playing_)
     {
         if (paused_)
@@ -114,10 +117,33 @@ void OniViconPlayer::playCb(const PlayGoalConstPtr& goal)
         }
 
         boost::mutex::scoped_lock lock(player_lock_);
-        if (!oni_player_.process(ros::Time::now()))
+        if (!oni_player_.process())
         {
             break;
         }
+
+        // get depth sensor frame
+        sensor_msgs::ImagePtr depth_msg = boost::make_shared<sensor_msgs::Image>();
+        oni_player_.toMsgImage(oni_player_.currentMetaData(), depth_msg);
+
+        // get corresponding vicon frame
+        ViconPlayer::PoseRecord vicon_pose = vicon_player_.poseRecord(oni_player_.currentFrame());
+
+        if (vicon_pose.stamp.isZero())
+        {
+            break;
+        }
+
+        // set meta data and publish
+        depth_msg->header.stamp.fromNSec(startup_time.toNSec() + vicon_pose.stamp.toNSec());
+
+        // publish visualization data (depth image, point cloud, vicon pose marker)
+        oni_player_.publish(depth_msg);
+        vicon_player_.publish(vicon_pose,
+                              depth_msg,
+                              calibration_transform_.objectDisplay());
+
+        // publish evaluation data
 
         feedback.current_time = oni_player_.currentFrame()/30.;
         feedback.current_vicon_frame = 0;
@@ -134,8 +160,13 @@ void OniViconPlayer::playCb(const PlayGoalConstPtr& goal)
 void OniViconPlayer::openCb(const OpenGoalConstPtr& goal)
 {
     OpenResult result;
-    OpenFeedback feedback;
-    feedback.progress_max = 100;
+
+    feedback_ .open = false;
+    feedback_ .progress = 0;
+    feedback_ .progress_max = 0;
+    feedback_ .total_time = 0;
+    feedback_ .total_vicon_frames = 0;
+    feedback_ .total_depth_sensor_frames = 0;
 
     boost::filesystem::path record_path = goal->record_path;
     std::string recording_name = record_path.leaf().string();
@@ -145,25 +176,23 @@ void OniViconPlayer::openCb(const OpenGoalConstPtr& goal)
     std::string global_calib_file = (record_path / "global_calibration.yaml").string();
     std::string local_calib_file = (record_path / "local_calibration.yaml").string();
 
-    // Create calibration transform from calibration files
-    CalibrationTransform calibration_transform;
-
-    if (!calibration_transform.loadGlobalCalibration(global_calib_file))
+    // Create calibration transform from calibration files    
+    if (!calibration_transform_.loadGlobalCalibration(global_calib_file))
     {
         result.message = "Loading global calibration file <" + global_calib_file + "> failed";
         open_as_.setAborted(result);
         return;
-    }
+    }       
 
-    if (!calibration_transform.loadLocalCalibration(local_calib_file))
+    if (!calibration_transform_.loadLocalCalibration(local_calib_file))
     {
         result.message = "Loading local calibration file <" + local_calib_file + "> failed";
         open_as_.setAborted(result);
         return;
     }
 
-    // open player using the oni file and the camera intrinsics from the calibration
-    if (!oni_player_.open(oni_file, calibration_transform.cameraIntrinsics()))
+    // open oni player using the oni file and the camera intrinsics from the calibration
+    if (!oni_player_.open(oni_file, calibration_transform_.cameraIntrinsics()))
     {
         result.message = "Opening ONI file <" + oni_file + "> failed";
         open_as_.setAborted(result);
@@ -171,22 +200,30 @@ void OniViconPlayer::openCb(const OpenGoalConstPtr& goal)
         return;
     }
 
-    feedback.progress = 90;
-    feedback.total_time = oni_player_.countFrames() / 30;
-    feedback.total_vicon_frames = feedback.total_time * 100;
-    feedback.total_depth_sensor_frames = oni_player_.countFrames();
-    open_as_.publishFeedback(feedback);
+    feedback_.progress_max = oni_player_.countFrames();
+    feedback_.progress = 0;
+
+    // load vicon data
+    if (!vicon_player_.load(vicon_file,
+                            calibration_transform_,
+                            boost::bind(&OniViconPlayer::loadUpdateCb, this, _1)))
+    {
+        result.message = "Loading vicon data file <" + vicon_file + "> failed";
+        open_as_.setAborted(result);
+        oni_player_.close();
+        return;
+    }
+
+    feedback_.progress = feedback_.progress_max;
+    feedback_.open = true;
+    feedback_.total_time = oni_player_.countFrames() / 30;
+    feedback_.total_vicon_frames = feedback_.total_time * 100;
+    feedback_.total_depth_sensor_frames = oni_player_.countFrames();
+    open_as_.publishFeedback(feedback_);
 
     ros::Rate rate(30);
     while (ros::ok() && !open_as_.isPreemptRequested())
     {
-        if (feedback.progress < feedback.progress_max)
-        {
-            ++feedback.progress;
-            feedback.open = (feedback.progress == feedback.progress_max);
-            open_as_.publishFeedback(feedback);
-        }
-
         rate.sleep();
     }
 
@@ -195,6 +232,13 @@ void OniViconPlayer::openCb(const OpenGoalConstPtr& goal)
     // stop player if playing
     paused_ = false;
     playing_ = false;
+    feedback_ .open = false;
+    feedback_ .progress = 0;
+    feedback_ .total_time = 0;
+    feedback_ .total_vicon_frames = 0;
+    feedback_ .total_depth_sensor_frames = 0;
+    open_as_.publishFeedback(feedback_);
+
     // wait till oni player processing is over (if the controller is implemented correctly, this
     // should not be necessary)
     boost::mutex::scoped_lock lock(player_lock_);
@@ -222,4 +266,11 @@ bool OniViconPlayer::setPlaybackSpeedCb(SetPlaybackSpeed::Request& request,
                                         SetPlaybackSpeed::Response& response)
 {
     return playing_ && paused_ && oni_player_.setPlaybackSpeed(request.speed);;
+}
+
+void OniViconPlayer::loadUpdateCb(int64_t frames_loaded)
+{
+    feedback_.progress = frames_loaded;
+    open_as_.publishFeedback(feedback_);
+    //ros::Rate(2000).sleep();
 }

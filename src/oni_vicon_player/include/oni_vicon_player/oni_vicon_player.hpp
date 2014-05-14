@@ -93,14 +93,20 @@ namespace oni_vicon_player
         bool setPlaybackSpeedCb(SetPlaybackSpeed::Request& request,
                                 SetPlaybackSpeed::Response& response);
 
+        void loadUpdateCb(int64_t frames_loaded);
+
     private:
         boost::mutex player_lock_;
 
         OniPlayer& oni_player_;
         ViconPlayer& vicon_player_;        
 
+        depth_sensor_vicon_calibration::CalibrationTransform calibration_transform_;
+
         actionlib::SimpleActionServer<OpenAction> open_as_;
         actionlib::SimpleActionServer<PlayAction> play_as_;
+
+        OpenFeedback feedback_;
 
         ros::ServiceServer pause_srv_;
         ros::ServiceServer seek_frame_srv_;
