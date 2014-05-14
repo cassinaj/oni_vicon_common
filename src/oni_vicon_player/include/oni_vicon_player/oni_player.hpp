@@ -77,14 +77,23 @@ namespace oni_vicon_player
         ~OniPlayer();
 
         bool open(const std::string &source_file, const CameraIntrinsics& camera_intrinsics);
-        bool process(ros::Time time);
+        bool process();
         bool close();
+
+        const xn::DepthMetaData& currentMetaData() const;
 
         XnUInt32 currentFrame() const;
         XnUInt32 countFrames() const;
 
         bool seekToFrame(XnInt32 frame);
         bool setPlaybackSpeed(double speed);
+
+        void toMsgImage(const xn::DepthMetaData& depth_meta_data,
+                        sensor_msgs::ImagePtr image) const;
+        void toMsgPointCloud(const sensor_msgs::ImagePtr& image,
+                             sensor_msgs::PointCloud2Ptr points);
+
+        void publish(sensor_msgs::ImagePtr image);
 
     private: /* implementation details */        
         struct Point3d // simple low cost vector (alternatives, tf::Point/tf::Vector3d)
@@ -94,10 +103,6 @@ namespace oni_vicon_player
             float z;
         };
 
-        void toMsgImage(const xn::DepthMetaData& depth_meta_data,
-                        sensor_msgs::ImagePtr image) const;
-        void toMsgPointCloud(const sensor_msgs::ImagePtr& image,
-                             sensor_msgs::PointCloud2Ptr points);
         float toMeter(const XnDepthPixel& depth_pixel) const;
         Point3d toPoint3d(float depth, float x, float y) const;
 

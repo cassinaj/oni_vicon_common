@@ -103,7 +103,7 @@ bool OniPlayer::open(const std::string& source_file, const CameraIntrinsics& cam
     return true;
 }
 
-bool OniPlayer::process(ros::Time time)
+bool OniPlayer::process()
 {
     boost::mutex::scoped_lock lock(capture_mutex_);
 
@@ -119,6 +119,7 @@ bool OniPlayer::process(ros::Time time)
 
     current_frame_ = depth_meta_data_.FrameID();
 
+    /*
     // convert and publish depth image and cloud point as needed
     sensor_msgs::ImagePtr depth_msg = boost::make_shared<sensor_msgs::Image>();
     toMsgImage(depth_meta_data_, depth_msg);
@@ -130,7 +131,11 @@ bool OniPlayer::process(ros::Time time)
     camera_info->header.stamp = depth_msg->header.stamp;
     camera_info->height = depth_msg->height;
     camera_info->width = depth_msg->width;
-    pub_depth_info_.publish(camera_info);
+
+    if (pub_depth_info_.getNumSubscribers() > 0)
+    {
+        pub_depth_info_.publish(camera_info);
+    }
 
     if (pub_depth_image_.getNumSubscribers () > 0)
     {
@@ -144,8 +149,39 @@ bool OniPlayer::process(ros::Time time)
 
         pub_point_cloud_.publish(points_msg);
     }
+    */
 
     return (current_frame_ != frames_);
+}
+
+void OniPlayer::publish(sensor_msgs::ImagePtr depth_msg)
+{
+    depth_msg->header.frame_id = depth_frame_id_;
+
+    if (pub_depth_info_.getNumSubscribers() > 0)
+    {
+        sensor_msgs::CameraInfoPtr camera_info =
+                CalibrationTransform::toCameraInfo(camera_intrinsics_);
+        camera_info->header.frame_id = depth_msg->header.frame_id;
+        camera_info->header.stamp = depth_msg->header.stamp;
+        camera_info->height = depth_msg->height;
+        camera_info->width = depth_msg->width;
+
+        pub_depth_info_.publish(camera_info);
+    }
+
+    if (pub_depth_image_.getNumSubscribers () > 0)
+    {
+        pub_depth_image_.publish(depth_msg);
+    }
+
+    if (pub_point_cloud_.getNumSubscribers () > 0)
+    {
+        sensor_msgs::PointCloud2Ptr points_msg = boost::make_shared<sensor_msgs::PointCloud2>();
+        toMsgPointCloud(depth_msg, points_msg);
+
+        pub_point_cloud_.publish(points_msg);
+    }
 }
 
 bool OniPlayer::close()
@@ -156,6 +192,11 @@ bool OniPlayer::close()
     depth_generator_.Release();
     context_.StopGeneratingAll();
     context_.Release();
+}
+
+const xn::DepthMetaData& OniPlayer::currentMetaData() const
+{
+    return depth_meta_data_;
 }
 
 XnUInt32 OniPlayer::currentFrame() const
@@ -254,6 +295,8 @@ void OniPlayer::toMsgPointCloud(const sensor_msgs::ImagePtr& image,
         }
     }
 }
+
+
 
 float OniPlayer::toMeter(const XnDepthPixel& depth_pixel) const
 {
