@@ -46,14 +46,199 @@
 
 #include "oni_vicon_player/vicon_player.hpp"
 
+#include <iostream>
+#include <fstream>
+
+#include <visualization_msgs/Marker.h>
+
 using namespace oni_vicon_player;
 
-ViconPlayer::ViconPlayer()
+ViconPlayer::ViconPlayer(ros::NodeHandle& node_handle)
 {
-
+    object_publisher_ =
+            node_handle.advertise<visualization_msgs::Marker>("vicon_object_pose", 0);
 }
 
 ViconPlayer::~ViconPlayer()
 {
 
+}
+
+bool ViconPlayer::load(const std::string& source_file,
+                       const ViconPlayer::CalibrationTransform& calibration_transform,
+                       boost::function<void(int64_t)> updateCb)
+{    
+    std::ifstream data_file(source_file.c_str());
+
+//    std::ofstream process_data((source_file + ".processed").c_str());
+
+    if (!data_file.is_open())
+    {
+        return false;
+    }
+
+    raw_data_.clear();
+    data_.clear();
+
+    RawRecord previous_record;
+    RawRecord record;
+    RawRecord selected_record;
+    while (data_file.peek() != EOF)
+    {
+        previous_record = record;
+
+        data_file >> record.vicon_time;
+        data_file >> record.vicon_frame;
+        data_file >> record.depth_sensor_time;
+        data_file >> record.depth_sensor_frame;
+        data_file >> record.vicon_frame_id;
+        data_file >> record.translation_x;
+        data_file >> record.translation_y;
+        data_file >> record.translation_z;
+        data_file >> record.orientation_w;
+        data_file >> record.orientation_x;
+        data_file >> record.orientation_y;
+        data_file >> record.orientation_z;
+
+        raw_data_.push_back(record);
+
+        if (record.depth_sensor_frame == 0)
+        {
+            previous_record = record;
+            continue;
+        }
+
+        if (record.depth_sensor_frame == previous_record.depth_sensor_frame)
+        {
+            continue;
+        }
+
+        PoseRecord pose_record;
+        tf::Vector3 translation;
+        tf::Quaternion orientation;
+
+        selected_record = closestViconFrame(record);
+
+        translation.setX(selected_record.translation_x);
+        translation.setY(selected_record.translation_y);
+        translation.setZ(selected_record.translation_z);
+
+        orientation.setW(selected_record.orientation_w);
+        orientation.setX(selected_record.orientation_x);
+        orientation.setY(selected_record.orientation_y);
+        orientation.setZ(selected_record.orientation_z);
+/*
+        process_data << selected_record.vicon_time << " ";
+        process_data << selected_record.vicon_frame << " ";
+        process_data << record.depth_sensor_time << " ";
+        process_data << record.depth_sensor_frame << " ";
+        process_data << selected_record.vicon_frame_id << " ";
+        process_data << selected_record.translation_x << " ";
+        process_data << selected_record.translation_y << " ";
+        process_data << selected_record.translation_z << " ";
+        process_data << selected_record.orientation_w << " ";
+        process_data << selected_record.orientation_x << " ";
+        process_data << selected_record.orientation_y << " ";
+        process_data << selected_record.orientation_z;
+        process_data << std::endl;
+*/
+        pose_record.stamp.fromSec(record.depth_sensor_time * 1e-3);
+        pose_record.pose.setOrigin(translation);
+        pose_record.pose.setRotation(orientation);
+
+        // transform into depth sensor frame
+        pose_record.pose = calibration_transform.viconToDepthSensor(pose_record.pose);
+
+        data_[record.depth_sensor_frame] = pose_record;
+
+        updateCb(data_.size());
+
+        if (countDepthSensorFrames() != record.depth_sensor_frame)
+        {
+            ROS_WARN("%ld !- %ld", countDepthSensorFrames(), record.depth_sensor_frame);
+        }
+    }
+
+    data_file.close();
+
+//    process_data.close();
+
+    return true;
+}
+
+const ViconPlayer::PoseRecord& ViconPlayer::poseRecord(int64_t frame)
+{
+    return data_[frame];
+}
+
+int64_t ViconPlayer::countViconFrames()
+{
+    return raw_data_.size();
+}
+
+int64_t ViconPlayer::countDepthSensorFrames()
+{
+    return data_.size();
+}
+
+ViconPlayer::RawRecord ViconPlayer::closestViconFrame(const ViconPlayer::RawRecord& oni_frame)
+{
+    std::vector<RawRecord>::reverse_iterator rit = raw_data_.rbegin();
+
+    RawRecord selected_record;
+
+    for (rit = raw_data_.rbegin(); rit != raw_data_.rend(); ++rit)
+    {
+        if (rit == raw_data_.rbegin())
+        {
+            selected_record = *rit;
+        }
+        else if (std::abs(oni_frame.depth_sensor_time - rit->vicon_time) >=
+                 std::abs(oni_frame.depth_sensor_time - selected_record.vicon_time))
+        {
+            break;
+        }
+        else
+        {
+            selected_record = *rit;
+        }
+    }
+
+    return selected_record;
+}
+
+
+void ViconPlayer::publish(const ViconPlayer::PoseRecord& pose_record,
+                          sensor_msgs::ImagePtr corresponding_image,
+                          const std::string& object_display)
+{
+    visualization_msgs::Marker marker;
+    marker.header.frame_id = corresponding_image->header.frame_id;
+    marker.header.stamp =  corresponding_image->header.stamp;
+    marker.ns = "vicon_object_pose";
+    marker.id = 0;
+    marker.scale.x = 1.0;
+    marker.scale.y = 1.0;
+    marker.scale.z = 1.0;
+    marker.color.r = 1;
+    marker.color.g = 0;
+    marker.color.b = 0;
+    marker.color.a = 1;
+
+    marker.type = visualization_msgs::Marker::MESH_RESOURCE;
+    marker.action = visualization_msgs::Marker::ADD;
+
+    marker.pose.position.x = pose_record.pose.getOrigin().getX();
+    marker.pose.position.y = pose_record.pose.getOrigin().getY();
+    marker.pose.position.z = pose_record.pose.getOrigin().getZ();
+
+    tf::Quaternion orientation = pose_record.pose.getRotation();
+    marker.pose.orientation.w = orientation.getW();
+    marker.pose.orientation.x = orientation.getX();
+    marker.pose.orientation.y = orientation.getY();
+    marker.pose.orientation.z = orientation.getZ();
+
+    marker.mesh_resource = object_display;
+
+    object_publisher_.publish(marker);
 }

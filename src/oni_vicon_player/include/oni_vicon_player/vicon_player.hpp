@@ -48,14 +48,81 @@
 #ifndef ONI_VICON_PLAYER_VICON_PLAYER_HPP
 #define ONI_VICON_PLAYER_VICON_PLAYER_HPP
 
+#include <depth_sensor_vicon_calibration/transform.hpp>
+
+// C++/STD
+#include <vector>
+#include <map>
+
+// ros
+#include <ros/ros.h>
+#include <geometry_msgs/Pose.h>
+#include <geometry_msgs/PoseStamped.h>
+#include <tf/LinearMath/Vector3.h>
+#include <tf/LinearMath/Quaternion.h>
+#include <tf/LinearMath/Scalar.h>
+#include <tf/LinearMath/Transform.h>
+#include <ros/ros.h>
+#include <sensor_msgs/Image.h>
+
 namespace oni_vicon_player
 {
     class ViconPlayer
     {
     public:
-        ViconPlayer();
-        ~ViconPlayer();
+        enum
+        {
+            CLOSEST,
+            INTERPOLATE
+        };
+
+        struct RawRecord
+        {
+            int64_t vicon_time;
+            int64_t vicon_frame;
+            int64_t depth_sensor_time;
+            int64_t depth_sensor_frame;
+            int64_t vicon_frame_id;
+            float translation_x;
+            float translation_y;
+            float translation_z;
+            float orientation_w;
+            float orientation_x;
+            float orientation_y;
+            float orientation_z;
+        };
+
+        struct PoseRecord
+        {
+            ros::Time stamp;
+            tf::Pose pose;
+        };
+
     private:
+        typedef depth_sensor_vicon_calibration::CalibrationTransform CalibrationTransform;
+
+    public:
+        ViconPlayer(ros::NodeHandle& node_handle);
+        virtual ~ViconPlayer();
+
+        bool load(const std::string &source_file,
+                  const CalibrationTransform& calibration_transform,
+                  boost::function<void(int64_t)> updateCb);
+
+        const PoseRecord& poseRecord(int64_t frame);
+
+        void publish(const PoseRecord& pose_record, sensor_msgs::ImagePtr corresponding_image, const std::string &object_display);
+
+        int64_t countViconFrames();
+        int64_t countDepthSensorFrames();
+
+    private:        
+        RawRecord closestViconFrame(const RawRecord& oni_frame);
+
+        std::vector<RawRecord> raw_data_;
+        std::map<int64_t, PoseRecord> data_;
+
+        ros::Publisher object_publisher_;
     };
 }
 

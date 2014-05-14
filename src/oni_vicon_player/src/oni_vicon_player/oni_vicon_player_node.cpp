@@ -71,7 +71,7 @@ int main(int argc, char **argv)
 
     OniPlayer oni_player(nh, depth_frame_id, camera_info_topic, point_cloud_topic);
 
-    ViconPlayer vicon_player;
+    ViconPlayer vicon_player(nh);
 
     OniViconPlayer oni_vicon_player(nh, oni_player, vicon_player);
 
