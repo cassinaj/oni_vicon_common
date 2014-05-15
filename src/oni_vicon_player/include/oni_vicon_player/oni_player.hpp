@@ -70,30 +70,34 @@ namespace oni_vicon_player
                 CameraIntrinsics;
 
     public:
-        OniPlayer(const ros::NodeHandle &node_handle,
-                  const std::string& depth_frame_id,
-                  const std::string& camera_info_topic,
-                  const std::string& point_cloud_topic);
-        ~OniPlayer();
+        OniPlayer();
+        virtual ~OniPlayer();
 
         bool open(const std::string &source_file, const CameraIntrinsics& camera_intrinsics);
-        bool process();
+        bool processNextFrame();
         bool close();
 
-        const xn::DepthMetaData& currentMetaData() const;
+        bool seekToFrame(XnInt32 frameID);
+        bool setPlaybackSpeed(double speed);
 
-        XnUInt32 currentFrame() const;
+        XnUInt32 currentFrameID() const;
         XnUInt32 countFrames() const;
 
-        bool seekToFrame(XnInt32 frame);
-        bool setPlaybackSpeed(double speed);
+        const xn::DepthMetaData& depthMetaData() const;
+        sensor_msgs::ImagePtr depthFrameAsMsgImage();
+        sensor_msgs::PointCloud2Ptr depthFrameAsMsgPointCloud(
+                const CameraIntrinsics& camera_intrinsics);
+
 
         void toMsgImage(const xn::DepthMetaData& depth_meta_data,
                         sensor_msgs::ImagePtr image) const;
         void toMsgPointCloud(const sensor_msgs::ImagePtr& image,
+                             const CameraIntrinsics &camera_intrinsics,
                              sensor_msgs::PointCloud2Ptr points);
 
-        void publish(sensor_msgs::ImagePtr image);
+
+        float toMeter(const XnDepthPixel& depth_pixel) const;
+        float toMillimeter(const XnDepthPixel& depth_pixel) const;
 
     private: /* implementation details */        
         struct Point3d // simple low cost vector (alternatives, tf::Point/tf::Vector3d)
@@ -103,23 +107,12 @@ namespace oni_vicon_player
             float z;
         };
 
-        float toMeter(const XnDepthPixel& depth_pixel) const;
-        Point3d toPoint3d(float depth, float x, float y) const;
+        Point3d toPoint3d(float depth,
+                          float x,
+                          float y,
+                          const CameraIntrinsics& camera_intrinsics) const;
 
     private:
-        /* ros publisher */
-        ros::NodeHandle node_handle_;
-        image_transport::ImageTransport image_transport_;
-        image_transport::Publisher pub_depth_image_;
-        ros::Publisher pub_point_cloud_;
-        ros::Publisher pub_depth_info_;
-
-        /* published data */
-        std::string depth_frame_id_;
-        std::string camera_info_topic_;
-        std::string point_cloud_topic_;
-        sensor_msgs::CameraInfo depth_cam_info_;
-
         /* OpenNI player */
         xn::Context context_;
         xn::Player player_;
@@ -130,10 +123,14 @@ namespace oni_vicon_player
         /* frame data */
         xn::DepthMetaData depth_meta_data_;
         XnUInt32 frames_;
-        XnUInt32 current_frame_;
 
-        CameraIntrinsics camera_intrinsics_;
         boost::mutex capture_mutex_;
+
+        sensor_msgs::PointCloud2Ptr msg_pointcloud_;
+        sensor_msgs::ImagePtr msg_image_;
+
+        bool msg_image_dirty_;
+        bool msg_pointcloud_dirty_;
     };
 }
 

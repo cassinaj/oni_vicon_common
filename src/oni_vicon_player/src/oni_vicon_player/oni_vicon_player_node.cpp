@@ -62,18 +62,21 @@ int main(int argc, char **argv)
     // calibration parameters with defaults
     std::string depth_frame_id = "/XTION_IR";
     std::string camera_info_topic = "/XTION/depth/camera_info";
-    std::string point_cloud_topic = "/XTION/depth/camera_info";
+    std::string point_cloud_topic = "/XTION/depth/points";
 
     // load set parameters otherwise maintain defautls
     nh.param("depth_frame_id", depth_frame_id, depth_frame_id);
     nh.param("camera_info_topic", camera_info_topic, camera_info_topic);
     nh.param("point_cloud_topic", point_cloud_topic, point_cloud_topic);
 
-    OniPlayer oni_player(nh, depth_frame_id, camera_info_topic, point_cloud_topic);
-
+    OniPlayer oni_player;
     ViconPlayer vicon_player(nh);
-
-    OniViconPlayer oni_vicon_player(nh, oni_player, vicon_player);
+    OniViconPlayer oni_vicon_player(nh,
+                                    oni_player,
+                                    vicon_player,
+                                    depth_frame_id,
+                                    camera_info_topic,
+                                    point_cloud_topic);
 
     oni_vicon_player.run();
 

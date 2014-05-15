@@ -58,34 +58,18 @@ if (rc != XN_STATUS_OK)                                       \
 using namespace depth_sensor_vicon_calibration;
 using namespace oni_vicon_player;
 
-OniPlayer::OniPlayer(const ros::NodeHandle& node_handle,
-                     const std::string& depth_frame_id,
-                     const std::string& camera_info_topic,
-                     const std::string& point_cloud_topic):
-    node_handle_(node_handle),
-    image_transport_(node_handle),
-    depth_frame_id_(depth_frame_id),
-    camera_info_topic_(camera_info_topic),
-    point_cloud_topic_(point_cloud_topic)
+OniPlayer::OniPlayer():
+    msg_image_dirty_(true),
+    msg_pointcloud_dirty_(true)
 {
-    pub_depth_image_ = image_transport_.advertise("depth/image", 100);
-    pub_depth_info_ = node_handle_.advertise<sensor_msgs::CameraInfo>("depth/camera_info", 100);
-    pub_point_cloud_ = node_handle_.advertise<sensor_msgs::PointCloud2>("depth/points", 100);
-
-    camera_intrinsics_.cx = 1;
-    camera_intrinsics_.cy = 1;
-    camera_intrinsics_.f = 1;
 }
 
 OniPlayer::~OniPlayer()
 {
-
 }
 
 bool OniPlayer::open(const std::string& source_file, const CameraIntrinsics& camera_intrinsics)
 {
-    ROS_INFO("Opening ONI");
-
     CHECK_RC(context_.Init());
     CHECK_RC(context_.OpenFileRecording(source_file.c_str(), player_));
     CHECK_RC(depth_generator_.Create(context_));
@@ -96,112 +80,76 @@ bool OniPlayer::open(const std::string& source_file, const CameraIntrinsics& cam
     CHECK_RC(player_.SetPlaybackSpeed(1.0));
     CHECK_RC(player_.SetRepeat(true));
 
-    ROS_INFO("ONI file <%s> loaded", source_file.c_str());
-
-    camera_intrinsics_ = camera_intrinsics;
-
     return true;
 }
 
-bool OniPlayer::process()
+bool OniPlayer::processNextFrame()
 {
     boost::mutex::scoped_lock lock(capture_mutex_);
 
     CHECK_RC(depth_generator_.WaitAndUpdateData());
 
-    if (!depth_generator_.IsDataNew()) // not sure yet if this required
-    {
-        return (current_frame_ != frames_);
-    }
+//    if (!depth_generator_.IsDataNew()) // not sure yet if this required
+//    {
+//        return (current_frame_ != frames_);
+//    }
 
     // get depth frame
     depth_generator_.GetMetaData(depth_meta_data_);
 
-    current_frame_ = depth_meta_data_.FrameID();
+    msg_image_dirty_ = true;
+    msg_pointcloud_dirty_ = true;
 
-    /*
-    // convert and publish depth image and cloud point as needed
-    sensor_msgs::ImagePtr depth_msg = boost::make_shared<sensor_msgs::Image>();
-    toMsgImage(depth_meta_data_, depth_msg);
-    depth_msg->header.frame_id = depth_frame_id_;
-    depth_msg->header.stamp = time;
-
-    sensor_msgs::CameraInfoPtr camera_info = CalibrationTransform::toCameraInfo(camera_intrinsics_);
-    camera_info->header.frame_id = depth_msg->header.frame_id;
-    camera_info->header.stamp = depth_msg->header.stamp;
-    camera_info->height = depth_msg->height;
-    camera_info->width = depth_msg->width;
-
-    if (pub_depth_info_.getNumSubscribers() > 0)
-    {
-        pub_depth_info_.publish(camera_info);
-    }
-
-    if (pub_depth_image_.getNumSubscribers () > 0)
-    {
-        pub_depth_image_.publish(depth_msg);
-    }
-
-    if (pub_point_cloud_.getNumSubscribers () > 0)
-    {
-        sensor_msgs::PointCloud2Ptr points_msg = boost::make_shared<sensor_msgs::PointCloud2>();
-        toMsgPointCloud(depth_msg, points_msg);
-
-        pub_point_cloud_.publish(points_msg);
-    }
-    */
-
-    return (current_frame_ != frames_);
-}
-
-void OniPlayer::publish(sensor_msgs::ImagePtr depth_msg)
-{
-    depth_msg->header.frame_id = depth_frame_id_;
-
-    if (pub_depth_info_.getNumSubscribers() > 0)
-    {
-        sensor_msgs::CameraInfoPtr camera_info =
-                CalibrationTransform::toCameraInfo(camera_intrinsics_);
-        camera_info->header.frame_id = depth_msg->header.frame_id;
-        camera_info->header.stamp = depth_msg->header.stamp;
-        camera_info->height = depth_msg->height;
-        camera_info->width = depth_msg->width;
-
-        pub_depth_info_.publish(camera_info);
-    }
-
-    if (pub_depth_image_.getNumSubscribers () > 0)
-    {
-        pub_depth_image_.publish(depth_msg);
-    }
-
-    if (pub_point_cloud_.getNumSubscribers () > 0)
-    {
-        sensor_msgs::PointCloud2Ptr points_msg = boost::make_shared<sensor_msgs::PointCloud2>();
-        toMsgPointCloud(depth_msg, points_msg);
-
-        pub_point_cloud_.publish(points_msg);
-    }
+    return (depth_meta_data_.FrameID() != frames_);
 }
 
 bool OniPlayer::close()
 {
-    ROS_INFO("Closing ONI player");
-
     player_.Release();
     depth_generator_.Release();
     context_.StopGeneratingAll();
     context_.Release();
 }
 
-const xn::DepthMetaData& OniPlayer::currentMetaData() const
+const xn::DepthMetaData& OniPlayer::depthMetaData() const
 {
     return depth_meta_data_;
 }
 
-XnUInt32 OniPlayer::currentFrame() const
+sensor_msgs::ImagePtr OniPlayer::depthFrameAsMsgImage()
 {
-    return current_frame_;
+    boost::mutex::scoped_lock lock(capture_mutex_);
+
+    if (msg_image_dirty_)
+    {
+        msg_image_ = boost::make_shared<sensor_msgs::Image>();
+        toMsgImage(depthMetaData(), msg_image_);
+
+        msg_image_dirty_ = false;
+    }
+
+    return msg_image_;
+}
+
+sensor_msgs::PointCloud2Ptr OniPlayer::depthFrameAsMsgPointCloud(
+        const CameraIntrinsics& camera_intrinsics)
+{
+    sensor_msgs::ImagePtr msg_image = depthFrameAsMsgImage();
+
+    boost::mutex::scoped_lock lock(capture_mutex_);
+
+    if (msg_pointcloud_dirty_)
+    {
+        msg_pointcloud_ = boost::make_shared<sensor_msgs::PointCloud2>();
+        toMsgPointCloud(msg_image, camera_intrinsics, msg_pointcloud_);
+    }
+
+    return msg_pointcloud_;
+}
+
+XnUInt32 OniPlayer::currentFrameID() const
+{
+    return depth_meta_data_.FrameID();
 }
 
 XnUInt32 OniPlayer::countFrames() const
@@ -209,11 +157,11 @@ XnUInt32 OniPlayer::countFrames() const
     return frames_;
 }
 
-bool OniPlayer::seekToFrame(XnInt32 frame)
+bool OniPlayer::seekToFrame(XnInt32 frameID)
 {
     if (player_.IsValid())
     {
-        player_.SeekToFrame(depth_generator_.GetName(), frame, XN_PLAYER_SEEK_SET);
+        player_.SeekToFrame(depth_generator_.GetName(), frameID, XN_PLAYER_SEEK_SET);
         return true;
     }
 
@@ -235,7 +183,6 @@ void OniPlayer::toMsgImage(const xn::DepthMetaData& depth_meta_data,
                            sensor_msgs::ImagePtr image) const
 {
     // all depth data is relative to the rgb frame since we take registered data by default
-    image->header.frame_id = depth_frame_id_;
     image->encoding = sensor_msgs::image_encodings::TYPE_32FC1;
     image->height = depth_meta_data.YRes();
     image->width = depth_meta_data.XRes();
@@ -254,6 +201,7 @@ void OniPlayer::toMsgImage(const xn::DepthMetaData& depth_meta_data,
 }
 
 void OniPlayer::toMsgPointCloud(const sensor_msgs::ImagePtr& image,
+                                const CameraIntrinsics& camera_intrinsics,
                                 sensor_msgs::PointCloud2Ptr points)
 {
     points->header.frame_id = image->header.frame_id;
@@ -287,7 +235,7 @@ void OniPlayer::toMsgPointCloud(const sensor_msgs::ImagePtr& image,
     {
         for(int x = 0; x < image->width; ++x, ++k, ++point_data)
         {            
-            p = toPoint3d(depth_data[k], x, y);
+            p = toPoint3d(depth_data[k], x, y, camera_intrinsics);
 
             *point_data++ = p.x;
             *point_data++ = p.y;
@@ -295,8 +243,6 @@ void OniPlayer::toMsgPointCloud(const sensor_msgs::ImagePtr& image,
         }
     }
 }
-
-
 
 float OniPlayer::toMeter(const XnDepthPixel& depth_pixel) const
 {
@@ -310,7 +256,22 @@ float OniPlayer::toMeter(const XnDepthPixel& depth_pixel) const
     return float(depth_pixel) * 1e-3f;
 }
 
-OniPlayer::Point3d OniPlayer::toPoint3d(float depth, float x, float y) const
+float OniPlayer::toMillimeter(const XnDepthPixel &depth_pixel) const
+{
+    static float bad_point = std::numeric_limits<float>::quiet_NaN();
+
+    if (depth_pixel == 0 || depth_pixel == no_sample_value_ || depth_pixel == shadow_value_)
+    {
+        return bad_point;
+    }
+
+    return float(depth_pixel);
+}
+
+OniPlayer::Point3d OniPlayer::toPoint3d(float depth,
+                                        float x,
+                                        float y,
+                                        const CameraIntrinsics& camera_intrinsics) const
 {
     Point3d point;
 
@@ -323,8 +284,8 @@ OniPlayer::Point3d OniPlayer::toPoint3d(float depth, float x, float y) const
     }
 
     point.z = depth;
-    point.x = (x - camera_intrinsics_.cx) * depth / camera_intrinsics_.f;
-    point.y = (y - camera_intrinsics_.cy) * depth / camera_intrinsics_.f;
+    point.x = (x - camera_intrinsics.cx) * depth / camera_intrinsics.f;
+    point.y = (y - camera_intrinsics.cy) * depth / camera_intrinsics.f;
 
     return point;
 }

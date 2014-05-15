@@ -123,6 +123,8 @@ namespace oni_vicon_player
         std::map<int64_t, PoseRecord> data_;
 
         ros::Publisher object_publisher_;
+
+        bool time_is_in_ms_;
     };
 }
 
