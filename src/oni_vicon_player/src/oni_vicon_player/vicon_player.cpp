@@ -53,7 +53,8 @@
 
 using namespace oni_vicon_player;
 
-ViconPlayer::ViconPlayer(ros::NodeHandle& node_handle)
+ViconPlayer::ViconPlayer(ros::NodeHandle& node_handle):
+    start_offset_(0)
 {
     object_publisher_ =
             node_handle.advertise<visualization_msgs::Marker>("vicon_object_pose", 0);
@@ -107,6 +108,14 @@ bool ViconPlayer::load(const std::string& source_file,
             previous_record = record;
             continue;
         }
+
+        if (previous_record.depth_sensor_frame == 0
+            && record.depth_sensor_frame != 0)
+        {
+            start_offset_ = record.depth_sensor_frame - 1;
+        }
+
+        record.depth_sensor_frame -= start_offset_;
 
         if (record.depth_sensor_frame == previous_record.depth_sensor_frame)
         {
