@@ -53,9 +53,16 @@ using namespace depth_sensor_vicon_calibration;
 
 OniViconPlayer::OniViconPlayer(ros::NodeHandle& node_handle,
                                OniPlayer& oni_player,
-                               ViconPlayer& vicon_player):
+                               ViconPlayer& vicon_player,
+                               const std::string& depth_frame_id,
+                               const std::string& camera_info_topic,
+                               const std::string& point_cloud_topic):
+    image_transport_(node_handle),
     oni_player_(oni_player),
     vicon_player_(vicon_player),
+    depth_frame_id_(depth_frame_id),
+    camera_info_topic_(camera_info_topic),
+    point_cloud_topic_(point_cloud_topic),
     open_as_(OpenGoal::ACTION_NAME,
              boost::bind(&OniViconPlayer::openCb, this, _1),
              false),
@@ -77,6 +84,10 @@ OniViconPlayer::OniViconPlayer(ros::NodeHandle& node_handle,
     set_playback_speed_srv_ = node_handle.advertiseService(SetPlaybackSpeed::Request::SERVICE_NAME,
                                                            &OniViconPlayer::setPlaybackSpeedCb,
                                                            this);
+
+    pub_depth_image_ = image_transport_.advertise("depth/image", 100);
+    pub_depth_info_ = node_handle.advertise<sensor_msgs::CameraInfo>("depth/camera_info", 100);
+    pub_point_cloud_ = node_handle.advertise<sensor_msgs::PointCloud2>("depth/points", 100);
 }
 
 OniViconPlayer::~OniViconPlayer()
@@ -99,13 +110,13 @@ void OniViconPlayer::playCb(const PlayGoalConstPtr& goal)
     feedback.playing = true;
     feedback.current_time = 0;
     feedback.current_vicon_frame = 0;
-    feedback.current_depth_sensor_frame = seeking_frame_;
-    oni_player_.seekToFrame(seeking_frame_);
+    feedback.current_depth_sensor_frame = goal->starting_frame;
+    oni_player_.seekToFrame(goal->starting_frame);
 
     play_as_.publishFeedback(feedback);
 
 
-    // this is due to ros, which complains if the time stamps are small and interpreted as
+    // this is due to ros, which complains if the time stamps are small and therefore interpreted as
     // too old. ros merely throws them away. how cruel is that?!
     ros::Time startup_time = ros::Time::now();
 
@@ -117,17 +128,16 @@ void OniViconPlayer::playCb(const PlayGoalConstPtr& goal)
         }
 
         boost::mutex::scoped_lock lock(player_lock_);
-        if (!oni_player_.process())
+        if (!oni_player_.processNextFrame())
         {
             break;
         }
 
         // get depth sensor frame
-        sensor_msgs::ImagePtr depth_msg = boost::make_shared<sensor_msgs::Image>();
-        oni_player_.toMsgImage(oni_player_.currentMetaData(), depth_msg);
+        sensor_msgs::ImagePtr depth_msg = oni_player_.depthFrameAsMsgImage();
 
         // get corresponding vicon frame
-        ViconPlayer::PoseRecord vicon_pose = vicon_player_.poseRecord(oni_player_.currentFrame());
+        ViconPlayer::PoseRecord vicon_pose = vicon_player_.poseRecord(oni_player_.currentFrameID());
 
         if (vicon_pose.stamp.isZero())
         {
@@ -136,18 +146,19 @@ void OniViconPlayer::playCb(const PlayGoalConstPtr& goal)
 
         // set meta data and publish
         depth_msg->header.stamp.fromNSec(startup_time.toNSec() + vicon_pose.stamp.toNSec());
+        depth_msg->header.frame_id = depth_frame_id_;
 
         // publish visualization data (depth image, point cloud, vicon pose marker)
-        oni_player_.publish(depth_msg);
+        publish(depth_msg);
         vicon_player_.publish(vicon_pose,
                               depth_msg,
                               calibration_transform_.objectDisplay());
 
         // publish evaluation data
 
-        feedback.current_time = oni_player_.currentFrame()/30.;
+        feedback.current_time = oni_player_.currentFrameID()/30.;
         feedback.current_vicon_frame = 0;
-        feedback.current_depth_sensor_frame = oni_player_.currentFrame();
+        feedback.current_depth_sensor_frame = oni_player_.currentFrameID();
         play_as_.publishFeedback(feedback);
     }
 
@@ -249,7 +260,7 @@ void OniViconPlayer::openCb(const OpenGoalConstPtr& goal)
 
 bool OniViconPlayer::pauseCb(Pause::Request& request, Pause::Response& response)
 {
-    seeking_frame_ = oni_player_.currentFrame();
+    seeking_frame_ = oni_player_.currentFrameID();
     paused_ = request.paused;
 
     return true;
@@ -265,12 +276,44 @@ bool OniViconPlayer::seekFrameCb(SeekFrame::Request& request, SeekFrame::Respons
 bool OniViconPlayer::setPlaybackSpeedCb(SetPlaybackSpeed::Request& request,
                                         SetPlaybackSpeed::Response& response)
 {
-    return playing_ && paused_ && oni_player_.setPlaybackSpeed(request.speed);;
+    //return playing_ && paused_ && oni_player_.setPlaybackSpeed(request.speed);
+    return oni_player_.setPlaybackSpeed(request.speed);
 }
 
 void OniViconPlayer::loadUpdateCb(int64_t frames_loaded)
 {
     feedback_.progress = frames_loaded;
     open_as_.publishFeedback(feedback_);
-    //ros::Rate(2000).sleep();
+}
+
+void OniViconPlayer::publish(sensor_msgs::ImagePtr depth_msg)
+{
+    depth_msg->header.frame_id = depth_frame_id_;
+
+    if (pub_depth_info_.getNumSubscribers() > 0)
+    {
+        sensor_msgs::CameraInfoPtr camera_info =
+                CalibrationTransform::toCameraInfo(calibration_transform_.cameraIntrinsics());
+        camera_info->header.frame_id = depth_msg->header.frame_id;
+        camera_info->header.stamp = depth_msg->header.stamp;
+        camera_info->height = depth_msg->height;
+        camera_info->width = depth_msg->width;
+
+        pub_depth_info_.publish(camera_info);
+    }
+
+    if (pub_depth_image_.getNumSubscribers () > 0)
+    {
+        pub_depth_image_.publish(depth_msg);
+    }
+
+    if (pub_point_cloud_.getNumSubscribers () > 0)
+    {
+        sensor_msgs::PointCloud2Ptr points_msg = boost::make_shared<sensor_msgs::PointCloud2>();
+        oni_player_.toMsgPointCloud(depth_msg,
+                                    calibration_transform_.cameraIntrinsics(),
+                                    points_msg);
+
+        pub_point_cloud_.publish(points_msg);
+    }
 }

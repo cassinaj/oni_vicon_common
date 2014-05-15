@@ -105,6 +105,11 @@ bool ViconPlayer::load(const std::string& source_file,
 
         if (record.depth_sensor_frame == 0)
         {
+            if (record.vicon_time < 1e3)
+            {
+                time_is_in_ms_ = true;
+            }
+
             previous_record = record;
             continue;
         }

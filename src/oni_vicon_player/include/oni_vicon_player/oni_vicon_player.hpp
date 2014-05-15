@@ -76,7 +76,10 @@ namespace oni_vicon_player
     public:
         OniViconPlayer(ros::NodeHandle& node_handle,
                        OniPlayer& oni_player,
-                       ViconPlayer& vicon_player);
+                       ViconPlayer& vicon_player,
+                       const std::string &depth_frame_id,
+                       const std::string &camera_info_topic,
+                       const std::string &point_cloud_topic);
         virtual ~OniViconPlayer();
 
         void run();
@@ -95,11 +98,24 @@ namespace oni_vicon_player
 
         void loadUpdateCb(int64_t frames_loaded);
 
+        void publish(sensor_msgs::ImagePtr image);
+
     private:
         boost::mutex player_lock_;
 
+        image_transport::ImageTransport image_transport_;
+        image_transport::Publisher pub_depth_image_;
+        ros::Publisher pub_point_cloud_;
+        ros::Publisher pub_depth_info_;
+
+        /* published data */
+        std::string depth_frame_id_;
+        std::string camera_info_topic_;
+        std::string point_cloud_topic_;
+        sensor_msgs::CameraInfo depth_cam_info_;
+
         OniPlayer& oni_player_;
-        ViconPlayer& vicon_player_;        
+        ViconPlayer& vicon_player_;
 
         depth_sensor_vicon_calibration::CalibrationTransform calibration_transform_;
 
