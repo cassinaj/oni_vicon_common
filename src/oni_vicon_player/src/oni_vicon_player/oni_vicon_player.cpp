@@ -293,7 +293,7 @@ void OniViconPlayer::publish(sensor_msgs::ImagePtr depth_msg)
     if (pub_depth_info_.getNumSubscribers() > 0)
     {
         sensor_msgs::CameraInfoPtr camera_info =
-                CalibrationTransform::toCameraInfo(calibration_transform_.cameraIntrinsics());
+                Transformer::toCameraInfo(calibration_transform_.cameraIntrinsics());
         camera_info->header.frame_id = depth_msg->header.frame_id;
         camera_info->header.stamp = depth_msg->header.stamp;
         camera_info->height = depth_msg->height;
@@ -316,4 +316,76 @@ void OniViconPlayer::publish(sensor_msgs::ImagePtr depth_msg)
 
         pub_point_cloud_.publish(points_msg);
     }
+}
+
+
+void toMsgImage(const xn::DepthMetaData& depth_meta_data,
+                sensor_msgs::ImagePtr image,
+                const GeneratorProperties& generator_properties,
+                Unit unit)
+{
+    // all depth data is relative to the rgb frame since we take registered data by default
+    image->encoding = sensor_msgs::image_encodings::TYPE_32FC1;
+    image->height = depth_meta_data.YRes();
+    image->width = depth_meta_data.XRes();
+    image->step = image->width * sizeof(float);
+    image->data.resize (image->height * image->step);
+
+    // copy and convert data data
+    float* data = reinterpret_cast<float*>(&image->data[0]);
+    for (unsigned int i = 0, k = 0; i < image->height; i++)
+    {
+        for (unsigned int j = 0; j < image->width; ++j, ++k, ++data)
+        {
+            switch (unit)
+            {
+            case Millimeter:
+                *data = toMillimeter(depth_meta_data[k], generator_properties);
+                break;
+            case Meter:
+                *data = toMeter(depth_meta_data[k], generator_properties);
+                break;
+            }
+        }
+    }
+}
+
+
+
+float toMeter(const XnDepthPixel& depth_pixel,
+              const GeneratorProperties& generator_properties)
+{
+    if (depth_pixel == 0)
+    {
+        return generator_properties.value_for_zero;
+    }
+    else if (depth_pixel == generator_properties.no_sample_value)
+    {
+        return generator_properties.value_for_no_sample;
+    }
+    else if (depth_pixel == generator_properties.shadow_value)
+    {
+        return generator_properties.value_for_shadow;
+    }
+
+    return float(depth_pixel);
+}
+
+float toMillimeter(const XnDepthPixel &depth_pixel,
+                   const GeneratorProperties& generator_properties)
+{
+    if (depth_pixel == 0)
+    {
+        return generator_properties.value_for_zero;
+    }
+    else if (depth_pixel == generator_properties.no_sample_value)
+    {
+        return generator_properties.value_for_no_sample;
+    }
+    else if (depth_pixel == generator_properties.shadow_value)
+    {
+        return generator_properties.value_for_shadow;
+    }
+
+    return float(depth_pixel);
 }

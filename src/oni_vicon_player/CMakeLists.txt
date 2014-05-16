@@ -12,6 +12,7 @@ find_package(catkin REQUIRED
     actionlib
     depth_sensor_vicon_calibration
     image_transport
+    oni_vicon_common
 )
 
 find_package(Boost REQUIRED)
@@ -57,7 +58,7 @@ generate_messages(
 catkin_package(
     INCLUDE_DIRS include
     LIBRARIES oni_vicon_player
-    CATKIN_DEPENDS actionlib_msgs actionlib depth_sensor_vicon_calibration image_transport
+    CATKIN_DEPENDS actionlib_msgs actionlib depth_sensor_vicon_calibration image_transport oni_vicon_common
     DEPENDS OpenNI
 )
 

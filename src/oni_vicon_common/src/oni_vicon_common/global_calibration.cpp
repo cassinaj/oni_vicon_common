@@ -1,4 +1,3 @@
-
 /*
  * Software License Agreement (BSD License)
  *
@@ -39,30 +38,75 @@
  */
 
 /**
- * @date 05/06/2014
+ * @date 05/15/2014
  * @author Jan Issac (jan.issac@gmail.com)
  * Max-Planck-Institute for Intelligent Systems, University of Southern California (USC),
  *   Karlsruhe Institute of Technology (KIT)
  */
 
-#ifndef DEPTH_SENSOR_VICON_CALIBRATION_TRANSFORM_HPP
-#define DEPTH_SENSOR_VICON_CALIBRATION_TRANSFORM_HPP
 
-#include <boost/shared_ptr.hpp>
+#include "oni_vicon_common/type_conversion.hpp"
+#include "oni_vicon_common/global_calibration.hpp"
 
-#include <sensor_msgs/CameraInfo.h>
-#include <geometry_msgs/Pose.h>
-#include <tf/LinearMath/Vector3.h>
-#include <tf/LinearMath/Quaternion.h>
-#include <tf/LinearMath/Scalar.h>
-#include <tf/LinearMath/Transform.h>
-#include <tf/transform_broadcaster.h>
+using namespace oni_vicon;
 
-#include <yaml-cpp/yaml.h>
-
-namespace depth_sensor_vicon_calibration
+GlobalCalibration::GlobalCalibration()
 {
+    setIdentity();
 
+    camera_intrinsics_.f = 0.;
+    camera_intrinsics_.cx = 0.;
+    camera_intrinsics_.cx = 0.;
 }
 
-#endif
+void GlobalCalibration::calibrate(sensor_msgs::CameraInfoConstPtr camera_info,
+                                  const tf::Pose& vicon_reference_frame,
+                                  const tf::Pose& depth_sensor_reference_frame)
+{
+    // set camera intrinsics
+    toCameraIntrinsics(camera_info, camera_intrinsics_);
+
+    // Assuming the local frame in both systems is exactley the same, the global calibration
+    // boils down to transforming a reference pose from vicon to depth sensor. This task requires
+    // a special calibration object which it's local frame is the same in both systems
+    vicon_to_camera_transform_.mult(depth_sensor_reference_frame, vicon_reference_frame.inverse());
+}
+
+tf::Pose GlobalCalibration::transformViconToCamera(const tf::Pose& vicon_pose) const
+{
+    tf::Pose camera_pose;
+    transformViconToCamera(vicon_pose, camera_pose);
+
+    return camera_pose;
+}
+
+void GlobalCalibration::transformViconToCamera(const tf::Pose& vicon_pose,
+                                                          tf::Pose& camera_pose) const
+{
+    camera_pose.mult(vicon_to_camera_transform_, vicon_pose);
+}
+
+void GlobalCalibration::setIdentity()
+{
+    vicon_to_camera_transform_.setIdentity();
+}
+
+const CameraIntrinsics& GlobalCalibration::cameraIntrinsics() const
+{
+    return camera_intrinsics_;
+}
+
+const tf::Transform& GlobalCalibration::viconToCameraTransform() const
+{
+    return vicon_to_camera_transform_;
+}
+
+void GlobalCalibration::cameraIntrinsics(const CameraIntrinsics& camera_intrinsics)
+{
+    camera_intrinsics_ = camera_intrinsics;
+}
+
+void GlobalCalibration::viconToCameraTransform(const tf::Transform& vicon_to_camera_transform)
+{
+    vicon_to_camera_transform_ = vicon_to_camera_transform;
+}

@@ -1,4 +1,3 @@
-
 /*
  * Software License Agreement (BSD License)
  *
@@ -39,30 +38,79 @@
  */
 
 /**
- * @date 05/06/2014
+ * @date 05/14/2014
  * @author Jan Issac (jan.issac@gmail.com)
  * Max-Planck-Institute for Intelligent Systems, University of Southern California (USC),
  *   Karlsruhe Institute of Technology (KIT)
  */
 
-#ifndef DEPTH_SENSOR_VICON_CALIBRATION_TRANSFORM_HPP
-#define DEPTH_SENSOR_VICON_CALIBRATION_TRANSFORM_HPP
+#ifndef ONI_VICON_COMMON_CALIBRATION_WRITER_HPP
+#define ONI_VICON_COMMON_CALIBRATION_WRITER_HPP
 
-#include <boost/shared_ptr.hpp>
-
-#include <sensor_msgs/CameraInfo.h>
 #include <geometry_msgs/Pose.h>
 #include <tf/LinearMath/Vector3.h>
 #include <tf/LinearMath/Quaternion.h>
-#include <tf/LinearMath/Scalar.h>
 #include <tf/LinearMath/Transform.h>
-#include <tf/transform_broadcaster.h>
 
 #include <yaml-cpp/yaml.h>
 
-namespace depth_sensor_vicon_calibration
-{
+#include "oni_vicon_common/types.hpp"
 
+namespace oni_vicon
+{
+    void globalCalibrationTo(YAML::Emitter &doc) const;
+    bool saveGlobalCalibration(const std::string& destination) const;
+
+    void localCalibrationTo(YAML::Emitter &doc) const;
+    bool saveLocalCalibration(const std::string& destination) const;
+
+
+    bool saveCalibration(const std::string& destination, const YAML::Emitter &doc) const;
+
+
+    inline YAML::Emitter& operator << (YAML::Emitter& doc, const tf::Vector3& translation)
+    {
+       doc << YAML::BeginMap
+           << YAML::Key << "x" << YAML::Value << translation.getX()
+           << YAML::Key << "y" << YAML::Value << translation.getY()
+           << YAML::Key << "z" << YAML::Value << translation.getZ()
+           << YAML::EndMap;
+
+       return doc;
+    }
+
+    inline YAML::Emitter& operator <<(YAML::Emitter& doc, const tf::Quaternion &rotation)
+    {
+        doc << YAML::BeginMap
+            << YAML::Key << "w" << YAML::Value << rotation.getW()
+            << YAML::Key << "x" << YAML::Value << rotation.getX()
+            << YAML::Key << "y" << YAML::Value << rotation.getY()
+            << YAML::Key << "z" << YAML::Value << rotation.getZ()
+            << YAML::EndMap;
+
+        return doc;
+    }
+
+    inline YAML::Emitter& operator <<(YAML::Emitter& doc, const tf::Transform& transform)
+    {
+        doc << YAML::BeginMap
+            << YAML::Key << "origin" << YAML::Value << transform.getOrigin()
+            << YAML::Key << "orientation" << YAML::Value << transform.getRotation()
+            << YAML::EndMap;
+
+        return doc;
+    }
+
+    inline YAML::Emitter& operator <<(YAML::Emitter& doc, const CameraIntrinsics& camera_intrinsics)
+    {
+        doc << YAML::BeginMap
+            << YAML::Key << "f" << YAML::Value << camera_intrinsics.f
+            << YAML::Key << "cx" << YAML::Value << camera_intrinsics.cx
+            << YAML::Key << "cy" << YAML::Value << camera_intrinsics.cy
+            << YAML::EndMap;
+
+        return doc;
+    }
 }
 
 #endif

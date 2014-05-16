@@ -54,7 +54,8 @@
 using namespace oni_vicon_player;
 
 ViconPlayer::ViconPlayer(ros::NodeHandle& node_handle):
-    start_offset_(0)
+    start_offset_(0),
+    time_is_in_ms_(false)
 {
     object_publisher_ =
             node_handle.advertise<visualization_msgs::Marker>("vicon_object_pose", 0);
@@ -254,5 +255,5 @@ void ViconPlayer::publish(const ViconPlayer::PoseRecord& pose_record,
 
     marker.mesh_resource = object_display;
 
-    object_publisher_.publish(marker);
+    object_publisher_.publish(marker);    
 }

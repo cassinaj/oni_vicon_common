@@ -99,7 +99,7 @@ namespace oni_vicon_player
         };
 
     private:
-        typedef depth_sensor_vicon_calibration::CalibrationTransform CalibrationTransform;
+        typedef depth_sensor_vicon_calibration::Transformer CalibrationTransform;
 
     public:
         ViconPlayer(ros::NodeHandle& node_handle);
@@ -123,6 +123,9 @@ namespace oni_vicon_player
         std::map<int64_t, PoseRecord> data_;
 
         ros::Publisher object_publisher_;
+
+        int64_t start_offset_;
+        bool time_is_in_ms_;
     };
 }
 

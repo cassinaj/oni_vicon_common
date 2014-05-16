@@ -66,7 +66,7 @@ namespace oni_vicon_player
     class OniPlayer
     {
     private:
-        typedef depth_sensor_vicon_calibration::CalibrationTransform::CameraIntrinsics
+        typedef depth_sensor_vicon_calibration::Transformer::CameraIntrinsics
                 CameraIntrinsics;
 
     public:

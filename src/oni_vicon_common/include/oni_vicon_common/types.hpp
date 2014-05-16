@@ -1,4 +1,3 @@
-
 /*
  * Software License Agreement (BSD License)
  *
@@ -39,30 +38,96 @@
  */
 
 /**
- * @date 05/06/2014
+ * @date 05/14/2014
  * @author Jan Issac (jan.issac@gmail.com)
  * Max-Planck-Institute for Intelligent Systems, University of Southern California (USC),
  *   Karlsruhe Institute of Technology (KIT)
  */
 
-#ifndef DEPTH_SENSOR_VICON_CALIBRATION_TRANSFORM_HPP
-#define DEPTH_SENSOR_VICON_CALIBRATION_TRANSFORM_HPP
+#ifndef ONI_VICON_COMMON_CAMERA_INTRINSICS_HPP
+#define ONI_VICON_COMMON_CAMERA_INTRINSICS_HPP
 
-#include <boost/shared_ptr.hpp>
+#include <ni/XnCppWrapper.h>
 
-#include <sensor_msgs/CameraInfo.h>
-#include <geometry_msgs/Pose.h>
-#include <tf/LinearMath/Vector3.h>
-#include <tf/LinearMath/Quaternion.h>
-#include <tf/LinearMath/Scalar.h>
-#include <tf/LinearMath/Transform.h>
-#include <tf/transform_broadcaster.h>
+#include <limits>
 
-#include <yaml-cpp/yaml.h>
-
-namespace depth_sensor_vicon_calibration
+namespace oni_vicon
 {
+    enum Unit
+    {
+        Millimeter,
+        Centimeter,
+        Meter
+    };
 
+    /**
+     * @brief Minimal camera intrinsic parameters. This is mainly used to construct 3d point clouds.
+     */
+    struct CameraIntrinsics
+    {
+        /**
+         * @brief f focal length
+         */
+        double f;
+
+        /**
+         * @brief cx x-coordinate component of the principal point
+         */
+        double cx;
+
+        /**
+         * @brief cy y-coordinate component of the principal point
+         */
+        double cy;
+    };
+
+    /**
+     * @brief simple low cost vector (alternatives, tf::Point/tf::Vector3d)
+     */
+    struct Point3d
+    {
+        float x;
+        float y;
+        float z;
+    };
+
+    /**
+     * @brief Basic generator value used in image conversion
+     */
+    struct GeneratorProperties
+    {
+        GeneratorProperties()
+        {
+            value_for_no_sample = std::numeric_limits<float>::quiet_NaN();
+            value_for_shadow = std::numeric_limits<float>::quiet_NaN();
+            value_for_zero = std::numeric_limits<float>::quiet_NaN();
+        }
+
+        /**
+         * @brief no_sample_value is the value defined by the generator on a missing sample
+         */
+        XnUInt64 no_sample_value;
+
+        /**
+         * @brief shadow_value is the value defined by the generator for shadow area
+         */
+        XnUInt64 shadow_value;
+
+        /**
+         * @brief value_for_no_sample is the value which a <no_sample_value> will be mapped onto
+         */
+        float value_for_no_sample;
+
+        /**
+         * @brief value_for_shadow is the value which a <shadow_value> will be mapped onto
+         */
+        float value_for_shadow;
+
+        /**
+         * @brief value_for_zero is the value which <0> will be mapped onto
+         */
+        float value_for_zero;
+    };
 }
 
 #endif

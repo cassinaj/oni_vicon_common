@@ -190,7 +190,7 @@ void OniPlayer::toMsgImage(const xn::DepthMetaData& depth_meta_data,
     image->data.resize (image->height * image->step);
 
     // copy and convert data data
-    float* data = reinterpret_cast<float*>(&image->data[0]);    
+    float* data = reinterpret_cast<float*>(&image->data[0]);
     for (unsigned int i = 0, k = 0; i < image->height; i++)
     {
         for (unsigned int j = 0; j < image->width; ++j, ++k, ++data)
@@ -234,7 +234,7 @@ void OniPlayer::toMsgPointCloud(const sensor_msgs::ImagePtr& image,
     for(int  y = 0, k = 0; y < image->height; ++y)
     {
         for(int x = 0; x < image->width; ++x, ++k, ++point_data)
-        {            
+        {
             p = toPoint3d(depth_data[k], x, y, camera_intrinsics);
 
             *point_data++ = p.x;

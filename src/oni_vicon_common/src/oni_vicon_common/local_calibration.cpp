@@ -1,4 +1,3 @@
-
 /*
  * Software License Agreement (BSD License)
  *
@@ -39,30 +38,82 @@
  */
 
 /**
- * @date 05/06/2014
+ * @date 05/15/2014
  * @author Jan Issac (jan.issac@gmail.com)
  * Max-Planck-Institute for Intelligent Systems, University of Southern California (USC),
  *   Karlsruhe Institute of Technology (KIT)
  */
 
-#ifndef DEPTH_SENSOR_VICON_CALIBRATION_TRANSFORM_HPP
-#define DEPTH_SENSOR_VICON_CALIBRATION_TRANSFORM_HPP
+#include "oni_vicon_common/local_calibration.hpp"
 
-#include <boost/shared_ptr.hpp>
+using namespace oni_vicon;
 
-#include <sensor_msgs/CameraInfo.h>
-#include <geometry_msgs/Pose.h>
-#include <tf/LinearMath/Vector3.h>
-#include <tf/LinearMath/Quaternion.h>
-#include <tf/LinearMath/Scalar.h>
-#include <tf/LinearMath/Transform.h>
-#include <tf/transform_broadcaster.h>
-
-#include <yaml-cpp/yaml.h>
-
-namespace depth_sensor_vicon_calibration
+LocalCalibration::LocalCalibration()
 {
-
+    setIdentity();
 }
 
-#endif
+void LocalCalibration::calibrate(const tf::Pose& vicon_reference_frame,
+                                 const tf::Pose& depth_sensor_reference_frame,
+                                 const std::string& object_mesh,
+                                 const std::string& object_mesh_display)
+{
+    vicon_local_to_camera_local_.mult(depth_sensor_reference_frame.inverse(),
+                                      vicon_reference_frame);
+
+    vicon_local_to_camera_local_ = vicon_local_to_camera_local_.inverse();
+
+    object_mesh_ = object_mesh;
+    object_mesh_display_ = object_mesh_display;
+}
+
+const tf::Transform& LocalCalibration::viconLocalToCameraLocal() const
+{
+    return vicon_local_to_camera_local_;
+}
+
+void LocalCalibration::viconLocalToCameraLocal(
+        const tf::Transform& vicon_local_to_camera_local) const
+{
+    vicon_local_to_camera_local_ = vicon_local_to_camera_local;
+}
+
+tf::Pose LocalCalibration::transformViconLocalToCameraLocal(const tf::Pose& vicon_local) const
+{
+    tf::Pose camera_local;
+    transformViconLocalToCameraLocal(vicon_local, camera_local);
+
+    return camera_local;
+}
+
+void LocalCalibration::transformViconLocalToCameraLocal(const tf::Pose& vicon_local,
+                                                        tf::Pose& camera_local) const
+{
+    camera_local.mult(vicon_local, vicon_local_to_camera_local_);
+}
+
+void LocalCalibration::setIdentity()
+{
+    vicon_local_to_camera_local_.setIdentity();
+}
+
+std::string LocalCalibration::object() const
+{
+    return object_mesh_;
+}
+
+std::string LocalCalibration::objectDisplay() const
+{
+    return object_mesh_display_;
+}
+
+std::string LocalCalibration::object(const std::string &object_mesh)
+{
+    object_mesh_ = object_mesh;
+}
+
+std::string LocalCalibration::objectDisplay(const std::string &object_mesh_display)
+{
+    object_mesh_display_ = object_mesh_display;
+}
+

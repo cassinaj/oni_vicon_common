@@ -1,4 +1,3 @@
-
 /*
  * Software License Agreement (BSD License)
  *
@@ -39,30 +38,10 @@
  */
 
 /**
- * @date 05/06/2014
+ * @date 05/14/2014
  * @author Jan Issac (jan.issac@gmail.com)
  * Max-Planck-Institute for Intelligent Systems, University of Southern California (USC),
  *   Karlsruhe Institute of Technology (KIT)
  */
 
-#ifndef DEPTH_SENSOR_VICON_CALIBRATION_TRANSFORM_HPP
-#define DEPTH_SENSOR_VICON_CALIBRATION_TRANSFORM_HPP
-
-#include <boost/shared_ptr.hpp>
-
-#include <sensor_msgs/CameraInfo.h>
-#include <geometry_msgs/Pose.h>
-#include <tf/LinearMath/Vector3.h>
-#include <tf/LinearMath/Quaternion.h>
-#include <tf/LinearMath/Scalar.h>
-#include <tf/LinearMath/Transform.h>
-#include <tf/transform_broadcaster.h>
-
-#include <yaml-cpp/yaml.h>
-
-namespace depth_sensor_vicon_calibration
-{
-
-}
-
-#endif
+#include "oni_vicon_common/camera_intrinsics.hpp"

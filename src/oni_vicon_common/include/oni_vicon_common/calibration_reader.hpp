@@ -1,4 +1,3 @@
-
 /*
  * Software License Agreement (BSD License)
  *
@@ -39,30 +38,72 @@
  */
 
 /**
- * @date 05/06/2014
+ * @date 05/14/2014
  * @author Jan Issac (jan.issac@gmail.com)
  * Max-Planck-Institute for Intelligent Systems, University of Southern California (USC),
  *   Karlsruhe Institute of Technology (KIT)
  */
 
-#ifndef DEPTH_SENSOR_VICON_CALIBRATION_TRANSFORM_HPP
-#define DEPTH_SENSOR_VICON_CALIBRATION_TRANSFORM_HPP
+#ifndef ONI_VICON_COMMON_CALIBRATION_READER_HPP
+#define ONI_VICON_COMMON_CALIBRATION_READER_HPP
 
-#include <boost/shared_ptr.hpp>
-
-#include <sensor_msgs/CameraInfo.h>
 #include <geometry_msgs/Pose.h>
 #include <tf/LinearMath/Vector3.h>
 #include <tf/LinearMath/Quaternion.h>
-#include <tf/LinearMath/Scalar.h>
 #include <tf/LinearMath/Transform.h>
-#include <tf/transform_broadcaster.h>
 
 #include <yaml-cpp/yaml.h>
 
-namespace depth_sensor_vicon_calibration
-{
+#include "oni_vicon_common/types.hpp"
+#include "oni_vicon_common/local_calibration.hpp"
+#include "oni_vicon_common/global_calibration.hpp"
 
+namespace oni_vicon
+{
+    void localCalibrationFrom(const YAML::Node& doc, LocalCalibration& local_calibration);
+    void globalCalibrationFrom(const YAML::Node& doc, GlobalCalibration& global_calibration);
+
+    bool loadGlobalCalibration(const std::string& source, LocalCalibration& local_calibration);
+    bool loadLocalCalibration(const std::string& source, GlobalCalibration& global_calibration);
+
+    void loadCalibrationDoc(const std::string &source, YAML::Node &doc);
+    bool loadCalibration(const std::string& source, const YAML::Node &doc);
+
+    inline void operator >>(const YAML::Node &node, tf::Vector3& translation)
+    {
+        tfScalar x, y, z;
+        node["x"] >> x;
+        node["y"] >> y;
+        node["z"] >> z;
+        translation.setValue(x, y, z);
+    }
+
+    inline void operator >>(const YAML::Node &node, tf::Quaternion &rotation)
+    {
+        tfScalar w, x, y, z;
+        node["w"] >> w;
+        node["x"] >> x;
+        node["y"] >> y;
+        node["z"] >> z;
+        rotation.setValue(x, y, z, w);
+    }
+
+    inline void operator >>(const YAML::Node& node, tf::Transform& transform)
+    {
+        tf::Vector3 origin;
+        tf::Quaternion rotation;
+        node["origin"] >> origin;
+        node["orientation"] >> rotation;
+        transform.setOrigin(origin);
+        transform.setRotation(rotation);
+    }
+
+    inline void operator >>(const YAML::Node& node, CameraIntrinsics& camera_intrinsics)
+    {
+        node["f"] >> camera_intrinsics.f;
+        node["cx"] >> camera_intrinsics.cx;
+        node["cy"] >> camera_intrinsics.cy;
+    }
 }
 
 #endif

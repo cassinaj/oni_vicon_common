@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package>
-  <name>oni_vicon_player</name>
+  <name>oni_vicon_common</name>
   <version>0.0.0</version>
-  <description>The oni_vicon_player package</description>
+  <description>The oni_vicon_common package</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag --> 
   <!-- Example:  -->
@@ -19,7 +19,7 @@
   <!-- Url tags are optional, but mutiple are allowed, one per tag -->
   <!-- Optional attribute type can be: website, bugtracker, or repository -->
   <!-- Example: -->
-  <!-- <url type="website">http://wiki.ros.org/oni_vicon_player</url> -->
+  <!-- <url type="website">http://wiki.ros.org/oni_vicon_common</url> -->
 
 
   <!-- Author tags are optional, mutiple are allowed, one per tag -->
@@ -41,25 +41,6 @@
   <!--   <test_depend>gtest</test_depend> -->
   <buildtool_depend>catkin</buildtool_depend>
 
-  <build_depend>roscpp</build_depend>
-  <build_depend>message_generation</build_depend>
-  <build_depend>actionlib</build_depend>
-  <build_depend>actionlib_msgs</build_depend>
-  <build_depend>libopenni-dev</build_depend>
-  <build_depend>libopenni-sensor-primesense-dev</build_depend>
-  <build_depend>depth_sensor_vicon_calibration</build_depend>
-  <build_depend>image_transport</build_depend>
-  <build_depend>oni_vicon_common</build_depend>
-
-  <run_depend>roscpp</run_depend>
-  <run_depend>message_runtime</run_depend>
-  <run_depend>actionlib</run_depend>
-  <run_depend>actionlib_msgs</run_depend>
-  <run_depend>libopenni-dev</run_depend>
-  <run_depend>libopenni-sensor-primesense-dev</run_depend>
-  <run_depend>image_transport</run_depend>
-  <run_depend>depth_sensor_vicon_calibration</run_depend>
-  <run_depend>oni_vicon_common</run_depend>
 
   <!-- The export tag contains other, unspecified, tags -->
   <export>
