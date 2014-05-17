@@ -69,7 +69,7 @@ namespace oni_vicon
          * @param global_calibration
          * @return
          */
-        bool loadGlobalCalibration(const std::string& source,
+        void loadGlobalCalibration(const std::string& source,
                                    GlobalCalibration& global_calibration);
 
         /**
@@ -78,7 +78,7 @@ namespace oni_vicon
          * @param local_calibration
          * @return
          */
-        bool loadLocalCalibration(const std::string& source,
+        void loadLocalCalibration(const std::string& source,
                                   LocalCalibration& local_calibration);
     private:
         /**

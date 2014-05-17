@@ -99,6 +99,7 @@ set(oni_vicon_common_HEADERS
     include/${PROJECT_NAME}/calibration_writer.hpp
     include/${PROJECT_NAME}/global_calibration.hpp
     include/${PROJECT_NAME}/local_calibration.hpp
+    include/${PROJECT_NAME}/exceptions.hpp
 )
 
 set(oni_vicon_common_SOURCES

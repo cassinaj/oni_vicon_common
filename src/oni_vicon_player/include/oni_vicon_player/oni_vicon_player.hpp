@@ -50,15 +50,15 @@
 
 #include "oni_vicon_player/oni_player.hpp"
 #include "oni_vicon_player/vicon_player.hpp"
+#include "oni_vicon_player/oni_vicon_playback_server.hpp"
 
 // boost
 #include <boost/thread/mutex.hpp>
 
 // ros
 #include <actionlib/server/simple_action_server.h>
-
-// depth_sensor_vicon_calibration
-#include <depth_sensor_vicon_calibration/transform.hpp>
+#include <visualization_msgs/Marker.h>
+#include <tf/transform_broadcaster.h>
 
 // actions
 #include <oni_vicon_player/OpenAction.h>
@@ -77,13 +77,10 @@ namespace oni_vicon_player
     {
     public:
         OniViconPlayer(ros::NodeHandle& node_handle,
-                       OniPlayer& oni_player,
-                       ViconPlayer& vicon_player,
+                       OniViconPlayback::Ptr playback,
                        const std::string &depth_frame_id,
                        const std::string &camera_info_topic,
                        const std::string &point_cloud_topic);
-        virtual ~OniViconPlayer();
-
         void run();
 
     public: /* action callbacks */
@@ -98,9 +95,13 @@ namespace oni_vicon_player
         bool setPlaybackSpeedCb(SetPlaybackSpeed::Request& request,
                                 SetPlaybackSpeed::Response& response);
 
-        void loadUpdateCb(int64_t frames_loaded);
+        void loadUpdateCb(uint32_t total_frames, uint32_t frames_loaded);
 
         void publish(sensor_msgs::ImagePtr image);
+
+        void publish(const tf::Pose& pose,
+                     sensor_msgs::ImagePtr corresponding_image,
+                     const std::string& object_display);
 
         sensor_msgs::ImagePtr depthFrameAsMsgImage();
         sensor_msgs::PointCloud2Ptr depthFrameAsMsgPointCloud();
@@ -116,21 +117,20 @@ namespace oni_vicon_player
     private:
         boost::mutex player_lock_;
 
+        oni_vicon_player::OniViconPlayback::Ptr playback_;
+
         image_transport::ImageTransport image_transport_;
         image_transport::Publisher pub_depth_image_;
         ros::Publisher pub_point_cloud_;
         ros::Publisher pub_depth_info_;
+        ros::Publisher vicon_object_pose_publisher_;
+        tf::TransformBroadcaster tf_broadcaster_;
 
         /* published data */
         std::string depth_frame_id_;
         std::string camera_info_topic_;
         std::string point_cloud_topic_;
         sensor_msgs::CameraInfo depth_cam_info_;
-
-        OniPlayer& oni_player_;
-        ViconPlayer& vicon_player_;
-
-        oni_vicon::Transformer calibration_transform_;
 
         actionlib::SimpleActionServer<OpenAction> open_as_;
         actionlib::SimpleActionServer<PlayAction> play_as_;
@@ -141,11 +141,8 @@ namespace oni_vicon_player
         ros::ServiceServer seek_frame_srv_;
         ros::ServiceServer set_playback_speed_srv_;
 
-        bool open_;
-        bool playing_;
         bool paused_;
         XnUInt32 seeking_frame_;
-
 
         sensor_msgs::PointCloud2Ptr msg_pointcloud_;
         sensor_msgs::ImagePtr msg_image_;

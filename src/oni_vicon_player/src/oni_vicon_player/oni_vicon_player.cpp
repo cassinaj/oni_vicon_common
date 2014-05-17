@@ -44,25 +44,25 @@
  *   Karlsruhe Institute of Technology (KIT)
  */
 
-#include "oni_vicon_player/oni_vicon_player.hpp"
-
 #include <boost/filesystem.hpp>
+
 #include <oni_vicon_common/calibration_reader.hpp>
 #include <oni_vicon_common/type_conversion.hpp>
+#include <oni_vicon_common/exceptions.hpp>
+
+#include "oni_vicon_player/exceptions.hpp"
+#include "oni_vicon_player/oni_vicon_player.hpp"
 
 using namespace oni_vicon;
 using namespace oni_vicon_player;
-using namespace depth_sensor_vicon_calibration;
 
 OniViconPlayer::OniViconPlayer(ros::NodeHandle& node_handle,
-                               OniPlayer& oni_player,
-                               ViconPlayer& vicon_player,
+                               OniViconPlayback::Ptr playback,
                                const std::string& depth_frame_id,
                                const std::string& camera_info_topic,
                                const std::string& point_cloud_topic):
+    playback_(playback),
     image_transport_(node_handle),
-    oni_player_(oni_player),
-    vicon_player_(vicon_player),
     depth_frame_id_(depth_frame_id),
     camera_info_topic_(camera_info_topic),
     point_cloud_topic_(point_cloud_topic),
@@ -72,8 +72,6 @@ OniViconPlayer::OniViconPlayer(ros::NodeHandle& node_handle,
     play_as_(PlayGoal::ACTION_NAME,
              boost::bind(&OniViconPlayer::playCb, this, _1),
              false),
-    open_(false),
-    playing_(false),
     paused_(false)
 {
     pause_srv_ = node_handle.advertiseService(Pause::Request::SERVICE_NAME,
@@ -91,11 +89,11 @@ OniViconPlayer::OniViconPlayer(ros::NodeHandle& node_handle,
     pub_depth_image_ = image_transport_.advertise("depth/image", 100);
     pub_depth_info_ = node_handle.advertise<sensor_msgs::CameraInfo>("depth/camera_info", 100);
     pub_point_cloud_ = node_handle.advertise<sensor_msgs::PointCloud2>("depth/points", 100);
+
+    vicon_object_pose_publisher_ =
+            node_handle.advertise<visualization_msgs::Marker>("vicon_object_pose", 0);
 }
 
-OniViconPlayer::~OniViconPlayer()
-{
-}
 
 void OniViconPlayer::run()
 {
@@ -107,14 +105,17 @@ void OniViconPlayer::run()
 
 void OniViconPlayer::playCb(const PlayGoalConstPtr& goal)
 {
-    playing_ = true;
-
     PlayFeedback feedback;
     feedback.playing = true;
     feedback.current_time = 0;
     feedback.current_vicon_frame = 0;
     feedback.current_depth_sensor_frame = goal->starting_frame;
-    oni_player_.seekToFrame(goal->starting_frame);
+
+
+
+    playback_->play(goal->starting_frame);
+
+
 
     play_as_.publishFeedback(feedback);
 
@@ -123,50 +124,69 @@ void OniViconPlayer::playCb(const PlayGoalConstPtr& goal)
     // too old. ros merely throws them away. how cruel is that?!
     ros::Time startup_time = ros::Time::now();
 
-    while (ros::ok() && !play_as_.isPreemptRequested() && playing_)
+    while (ros::ok() && !play_as_.isPreemptRequested() && playback_->isPlaying())
     {
         if (paused_)
         {
-            oni_player_.seekToFrame(seeking_frame_);
+            playback_->seekToFrame(seeking_frame_);
         }
 
         boost::mutex::scoped_lock lock(player_lock_);
-        if (!oni_player_.processNextFrame())
-        {
-            break;
-        }
+        uint32_t frame_id = playback_->nextFrame();
 
-        // get depth sensor frame
-        sensor_msgs::ImagePtr depth_msg = oni_player_.currentDepthImageMsg();
+        // get depth sensor frame and corresponding vicon frame
+        sensor_msgs::ImagePtr depth_msg = playback_->oniPlayer()->currentDepthImageMsg();
+        ViconPlayer::PoseRecord vicon_pose_record = playback_->viconPlayer()->pose(frame_id);
 
-        // get corresponding vicon frame
-        ViconPlayer::PoseRecord vicon_pose = vicon_player_.poseRecord(oni_player_.currentFrameID());
-
-        if (vicon_pose.stamp.isZero())
+        if (vicon_pose_record.stamp.isZero())
         {
             break;
         }
 
         // set meta data and publish
-        depth_msg->header.stamp.fromNSec(startup_time.toNSec() + vicon_pose.stamp.toNSec());
+        depth_msg->header.stamp.fromNSec(startup_time.toNSec() + vicon_pose_record.stamp.toNSec());
         depth_msg->header.frame_id = depth_frame_id_;
 
         // publish visualization data (depth image, point cloud, vicon pose marker)
         publish(depth_msg);
-        vicon_player_.publish(vicon_pose,
-                              depth_msg,
-                              calibration_transform_.objectDisplay());
+        publish(vicon_pose_record.pose,
+                depth_msg,
+                playback_->transformer().localCalibration().objectDisplay());
+
+        /*
+        tf_broadcaster_.sendTransform(
+                    tf::StampedTransform(
+                        playback_->transformer().globalCalibration().viconToCameraTransform(),
+                        ros::Time(depth_msg->header.stamp.toSec()-10., 0),
+                        depth_frame_id_,
+                        "vicon_global_frame"));
+        */
+
+        tf_broadcaster_.sendTransform(
+                    tf::StampedTransform(
+                        playback_->transformer().globalCalibration().viconToCameraTransform(),
+                        depth_msg->header.stamp,
+                        depth_frame_id_,
+                        "vicon_global_frame"));
+
+        /*
+        tf_broadcaster_.sendTransform(
+                    tf::StampedTransform(
+                        playback_->transformer().globalCalibration().viconToCameraTransform(),
+                        ros::Time(depth_msg->header.stamp.toSec()+10., 0),
+                        depth_frame_id_,
+                        "vicon_global_frame"));
+        */
 
         // publish evaluation data
-        feedback.current_time = oni_player_.currentFrameID() / 30.;
+        feedback.current_time = frame_id / 30.;
         feedback.current_vicon_frame = 0;
-        feedback.current_depth_sensor_frame = oni_player_.currentFrameID();
+        feedback.current_depth_sensor_frame = frame_id;
         play_as_.publishFeedback(feedback);
     }
 
     paused_ = false;
-    playing_ = false;
-    oni_player_.seekToFrame(0);
+    playback_->seekToFrame(0);
     play_as_.setSucceeded();
 }
 
@@ -174,89 +194,42 @@ void OniViconPlayer::openCb(const OpenGoalConstPtr& goal)
 {
     OpenResult result;
 
-    feedback_ .open = false;
-    feedback_ .progress = 0;
-    feedback_ .progress_max = 0;
-    feedback_ .total_time = 0;
-    feedback_ .total_vicon_frames = 0;
-    feedback_ .total_depth_sensor_frames = 0;
-
-    boost::filesystem::path record_path = goal->record_path;
-    std::string recording_name = record_path.leaf().string();
-
-    std::string oni_file = (record_path / (recording_name + ".oni")).string();
-    std::string vicon_file = (record_path / (recording_name + ".txt")).string();
-    std::string global_calib_file = (record_path / "global_calibration.yaml").string();
-    std::string local_calib_file = (record_path / "local_calibration.yaml").string();
-
-    CalibrationReader calibration_reader;
-    LocalCalibration local_calibration;
-    GlobalCalibration global_calibration;
-
-    // Create calibration transform from calibration files    
-    if (calibration_reader.loadGlobalCalibration(global_calib_file, global_calibration))
-    {
-        calibration_transform_.globalCalibration(global_calibration);
-    }
-    else
-    {
-        result.message = "Loading global calibration file <" + global_calib_file + "> failed";
-        open_as_.setAborted(result);
-        return;
-    }       
-
-    if (calibration_reader.loadLocalCalibration(local_calib_file, local_calibration))
-    {
-        calibration_transform_.localCalibration(local_calibration);
-    }
-    else
-    {
-        result.message = "Loading local calibration file <" + local_calib_file + "> failed";
-        open_as_.setAborted(result);
-        return;
-    }
-
-    // open oni player using the oni file and the camera intrinsics from the calibration
-    if (!oni_player_.open(oni_file, calibration_transform_.cameraIntrinsics()))
-    {
-        result.message = "Opening ONI file <" + oni_file + "> failed";
-        open_as_.setAborted(result);
-        oni_player_.close();
-        return;
-    }
-
-    feedback_.progress_max = oni_player_.countFrames();
+    feedback_.open = false;
     feedback_.progress = 0;
+    feedback_.progress_max = 0;
+    feedback_.total_time = 0;
+    feedback_.total_vicon_frames = 0;
+    feedback_.total_depth_sensor_frames = 0;
 
-    // load vicon data
-    if (!vicon_player_.load(vicon_file,
-                            calibration_transform_,
-                            boost::bind(&OniViconPlayer::loadUpdateCb, this, _1)))
+    try
+    {        
+        playback_->open(goal->record_path,
+                       boost::bind(&OniViconPlayer::loadUpdateCb, this, _1, _2));
+    }
+    catch(oni_vicon_player::OpenRecordException& e)
     {
-        result.message = "Loading vicon data file <" + vicon_file + "> failed";
+        result.message = e.what();
         open_as_.setAborted(result);
-        oni_player_.close();
         return;
     }
 
     feedback_.progress = feedback_.progress_max;
     feedback_.open = true;
-    feedback_.total_time = oni_player_.countFrames() / 30;
+    feedback_.total_time = playback_->oniPlayer()->countFrames() / 30;
     feedback_.total_vicon_frames = feedback_.total_time * 100;
-    feedback_.total_depth_sensor_frames = oni_player_.countFrames();
+    feedback_.total_depth_sensor_frames = playback_->oniPlayer()->countFrames();
     open_as_.publishFeedback(feedback_);
 
+    // wait until stopped
     ros::Rate rate(30);
     while (ros::ok() && !open_as_.isPreemptRequested())
     {
         rate.sleep();
-    }
-
-    result.message = "Record closed";
+    }    
 
     // stop player if playing
+    playback_->stop();
     paused_ = false;
-    playing_ = false;
     feedback_ .open = false;
     feedback_ .progress = 0;
     feedback_ .total_time = 0;
@@ -267,14 +240,15 @@ void OniViconPlayer::openCb(const OpenGoalConstPtr& goal)
     // wait till oni player processing is over (if the controller is implemented correctly, this
     // should not be necessary)
     boost::mutex::scoped_lock lock(player_lock_);
+    playback_->close();
 
-    oni_player_.close();
+    result.message = "Record closed";
     open_as_.setSucceeded(result);
 }
 
 bool OniViconPlayer::pauseCb(Pause::Request& request, Pause::Response& response)
 {
-    seeking_frame_ = oni_player_.currentFrameID();
+    seeking_frame_ = playback_->oniPlayer()->currentFrameID();
     paused_ = request.paused;
 
     return true;
@@ -284,18 +258,23 @@ bool OniViconPlayer::seekFrameCb(SeekFrame::Request& request, SeekFrame::Respons
 {
     //boost::mutex::scoped_lock lock(player_lock_);
     seeking_frame_ = request.frame;
-    return playing_ && paused_ && oni_player_.seekToFrame(request.frame);
+    return playback_->isPlaying() && paused_ && playback_->oniPlayer()->seekToFrame(request.frame);
 }
 
 bool OniViconPlayer::setPlaybackSpeedCb(SetPlaybackSpeed::Request& request,
                                         SetPlaybackSpeed::Response& response)
 {
-    //return playing_ && paused_ && oni_player_.setPlaybackSpeed(request.speed);
-    return oni_player_.setPlaybackSpeed(request.speed);
+    //return playing_ && paused_ && playback_->oniPlayer()->setPlaybackSpeed(request.speed);
+    return playback_->oniPlayer()->setPlaybackSpeed(request.speed);
 }
 
-void OniViconPlayer::loadUpdateCb(int64_t frames_loaded)
+void OniViconPlayer::loadUpdateCb(uint32_t total_frames, uint32_t frames_loaded)
 {
+    if (total_frames > 0)
+    {
+        feedback_.progress_max = total_frames;
+    }
+
     feedback_.progress = frames_loaded;
     open_as_.publishFeedback(feedback_);
 }
@@ -307,7 +286,7 @@ void OniViconPlayer::publish(sensor_msgs::ImagePtr depth_msg)
     if (pub_depth_info_.getNumSubscribers() > 0)
     {
         sensor_msgs::CameraInfoPtr camera_info =
-                oni_vicon::toCameraInfo(calibration_transform_.cameraIntrinsics());
+                oni_vicon::toCameraInfo(playback_->transformer().cameraIntrinsics());
         camera_info->header.frame_id = depth_msg->header.frame_id;
         camera_info->header.stamp = depth_msg->header.stamp;
         camera_info->height = depth_msg->height;
@@ -325,9 +304,44 @@ void OniViconPlayer::publish(sensor_msgs::ImagePtr depth_msg)
     {
         sensor_msgs::PointCloud2Ptr points_msg = boost::make_shared<sensor_msgs::PointCloud2>();
         oni_vicon::toMsgPointCloud(depth_msg,
-                                   calibration_transform_.cameraIntrinsics(),
+                                   playback_->transformer().cameraIntrinsics(),
                                    points_msg);
 
         pub_point_cloud_.publish(points_msg);
     }
+}
+
+void OniViconPlayer::publish(const tf::Pose& pose,
+                             sensor_msgs::ImagePtr corresponding_image,
+                             const std::string& object_display)
+{
+    visualization_msgs::Marker marker;
+    marker.header.frame_id = corresponding_image->header.frame_id;
+    marker.header.stamp =  corresponding_image->header.stamp;
+    marker.ns = "vicon_object_pose";
+    marker.id = 0;
+    marker.scale.x = 1.0;
+    marker.scale.y = 1.0;
+    marker.scale.z = 1.0;
+    marker.color.r = 1;
+    marker.color.g = 0;
+    marker.color.b = 0;
+    marker.color.a = 1;
+
+    marker.type = visualization_msgs::Marker::MESH_RESOURCE;
+    marker.action = visualization_msgs::Marker::ADD;
+
+    marker.pose.position.x = pose.getOrigin().getX();
+    marker.pose.position.y = pose.getOrigin().getY();
+    marker.pose.position.z = pose.getOrigin().getZ();
+
+    tf::Quaternion orientation = pose.getRotation();
+    marker.pose.orientation.w = orientation.getW();
+    marker.pose.orientation.x = orientation.getX();
+    marker.pose.orientation.y = orientation.getY();
+    marker.pose.orientation.z = orientation.getZ();
+
+    marker.mesh_resource = object_display;
+
+    vicon_object_pose_publisher_.publish(marker);
 }

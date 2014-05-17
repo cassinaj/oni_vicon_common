@@ -44,14 +44,19 @@
  *   Karlsruhe Institute of Technology (KIT)
  */
 
+// c++/std
 #include <iostream>
 #include <fstream>
 
+// boost
+#include <boost/format.hpp>
+
+#include "oni_vicon_common/exceptions.hpp"
 #include "oni_vicon_common/calibration_reader.hpp"
 
 using namespace oni_vicon;
 
-bool CalibrationReader::loadGlobalCalibration(const std::string& source,
+void CalibrationReader::loadGlobalCalibration(const std::string& source,
                                               GlobalCalibration& global_calibration)
 {
     try
@@ -60,15 +65,16 @@ bool CalibrationReader::loadGlobalCalibration(const std::string& source,
         loadCalibration(source, doc);
         globalCalibrationFromYaml(doc, global_calibration);
     }
-    catch(YAML::ParserException& e) {
-        std::cout << e.what() << "\n";
-        return false;
+    catch(YAML::ParserException& e)
+    {
+        throw LoadingCalibrationException(
+                    (boost::format("Loading global calibration file <%s> failed: %s")
+                     % source
+                     % e.what()).str());
     }
-
-    return true;
 }
 
-bool CalibrationReader::loadLocalCalibration(const std::string& source,
+void CalibrationReader::loadLocalCalibration(const std::string& source,
                                              LocalCalibration& local_calibration)
 {
     try
@@ -77,12 +83,13 @@ bool CalibrationReader::loadLocalCalibration(const std::string& source,
         loadCalibration(source, doc);
         localCalibrationFromYaml(doc, local_calibration);
     }
-    catch(YAML::ParserException& e) {
-        std::cout << e.what() << "\n";
-        return false;
+    catch(YAML::ParserException& e)
+    {
+        throw LoadingCalibrationException(
+                    (boost::format("Loading local calibration file <%s> failed: %s")
+                     % source
+                     % e.what()).str());
     }
-
-    return true;
 }
 
 void CalibrationReader::globalCalibrationFromYaml(const YAML::Node& doc,

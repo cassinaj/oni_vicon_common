@@ -1,9 +1,9 @@
 string ACTION_NAME=/oni_vicon_player/Play
 
-uint64 starting_frame
+uint32 starting_frame
 ---
 ---
 bool playing
 float64 current_time
-uint64 current_vicon_frame
-uint64 current_depth_sensor_frame
+uint32 current_vicon_frame
+uint32 current_depth_sensor_frame

@@ -44,12 +44,20 @@
  *   Karlsruhe Institute of Technology (KIT)
  */
 
+
+// c++/std
 #include <string>
+
+#include <boost/shared_ptr.hpp>
+#include <boost/make_shared.hpp>
+
+// ros
 #include <ros/ros.h>
 
 #include <oni_vicon_player/oni_player.hpp>
 #include <oni_vicon_player/vicon_player.hpp>
 #include <oni_vicon_player/oni_vicon_player.hpp>
+#include <oni_vicon_player/oni_vicon_playback_server.hpp>
 
 using namespace oni_vicon_player;
 
@@ -69,11 +77,12 @@ int main(int argc, char **argv)
     nh.param("camera_info_topic", camera_info_topic, camera_info_topic);
     nh.param("point_cloud_topic", point_cloud_topic, point_cloud_topic);
 
-    OniPlayer oni_player;
-    ViconPlayer vicon_player(nh);
+    OniPlayer::Ptr oni_player = boost::make_shared<OniPlayer>();
+    ViconPlayer::Ptr vicon_player = boost::make_shared<ViconPlayer>();
+    OniViconPlayback::Ptr playback = boost::make_shared<OniViconPlayback>(oni_player, vicon_player);
+
     OniViconPlayer oni_vicon_player(nh,
-                                    oni_player,
-                                    vicon_player,
+                                    playback,
                                     depth_frame_id,
                                     camera_info_topic,
                                     point_cloud_topic);

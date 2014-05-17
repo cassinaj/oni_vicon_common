@@ -77,6 +77,7 @@ set(oni_vicon_player_HEADERS
     include/${PROJECT_NAME}/vicon_player.hpp
     include/${PROJECT_NAME}/oni_vicon_player.hpp
     include/${PROJECT_NAME}/oni_vicon_playback_server.hpp
+    include/${PROJECT_NAME}/exceptions.hpp
 )
 
 include_directories(include

@@ -47,7 +47,10 @@
 #include <string>
 
 
+#include <oni_vicon_common/exceptions.hpp>
 #include <oni_vicon_common/type_conversion.hpp>
+
+#include "oni_vicon_player/exceptions.hpp"
 #include "oni_vicon_player/oni_player.hpp"
 
 #define CHECK_RC(rc)                                          \
@@ -55,6 +58,13 @@ if (rc != XN_STATUS_OK)                                       \
 {                                                             \
     ROS_ERROR("%s failed: %s\n", #rc, xnGetStatusString(rc)); \
     return false;                                             \
+}
+
+#define CHECK_RC_THROW(rc)                                    \
+if (rc != XN_STATUS_OK)                                       \
+{                                                             \
+    ROS_DEBUG("%s failed: %s\n", #rc, xnGetStatusString(rc)); \
+    throw oni_vicon_player::OpenOniFileException("");         \
 }
 
 using namespace oni_vicon;
@@ -70,25 +80,26 @@ OniPlayer::~OniPlayer()
 {
 }
 
-bool OniPlayer::open(const std::string& source_file, const CameraIntrinsics& camera_intrinsics)
+void OniPlayer::open(const std::string& source_file, const CameraIntrinsics& camera_intrinsics)
 {
-    CHECK_RC(context_.Init());
-    CHECK_RC(context_.OpenFileRecording(source_file.c_str(), player_));
-    CHECK_RC(depth_generator_.Create(context_));
-    CHECK_RC(player_.GetNumFrames(depth_generator_.GetName(), frames_));
-    CHECK_RC(depth_generator_.GetIntProperty((XnChar*)"NoSampleValue", no_sample_value_));
-    CHECK_RC(depth_generator_.GetIntProperty((XnChar*)"ShadowValue", shadow_value_));
-    CHECK_RC(context_.StartGeneratingAll());
-    CHECK_RC(player_.SetPlaybackSpeed(1.0));
-    CHECK_RC(player_.SetRepeat(true));
+    CHECK_RC_THROW(context_.Init());
+    CHECK_RC_THROW(context_.OpenFileRecording(source_file.c_str(), player_));
+    CHECK_RC_THROW(depth_generator_.Create(context_));
+    CHECK_RC_THROW(player_.GetNumFrames(depth_generator_.GetName(), frames_));
+    CHECK_RC_THROW(depth_generator_.GetIntProperty((XnChar*)"NoSampleValue", no_sample_value_));
+    CHECK_RC_THROW(depth_generator_.GetIntProperty((XnChar*)"ShadowValue", shadow_value_));
+    CHECK_RC_THROW(context_.StartGeneratingAll());
+    CHECK_RC_THROW(player_.SetPlaybackSpeed(1.0));
+    CHECK_RC_THROW(player_.SetRepeat(true));
 
     camera_intrinsics_ = camera_intrinsics;
-
-    return true;
 }
 
 bool OniPlayer::processNextFrame()
 {
+
+    // throw if EOF
+
     boost::mutex::scoped_lock lock(read_write_mutex_);
 
     CHECK_RC(depth_generator_.WaitAndUpdateData());
@@ -150,17 +161,17 @@ sensor_msgs::PointCloud2Ptr OniPlayer::currentPointCloud2Msg()
     return cache_msg_pointcloud_;
 }
 
-XnUInt32 OniPlayer::currentFrameID() const
+uint32_t OniPlayer::currentFrameID() const
 {
     return depth_meta_data_.FrameID();
 }
 
-XnUInt32 OniPlayer::countFrames() const
+uint32_t OniPlayer::countFrames() const
 {
     return frames_;
 }
 
-bool OniPlayer::seekToFrame(XnInt32 frameID)
+bool OniPlayer::seekToFrame(uint32_t frameID)
 {
     if (player_.IsValid())
     {
@@ -180,6 +191,11 @@ bool OniPlayer::setPlaybackSpeed(double speed)
     }
 
     return false;
+}
+
+bool OniPlayer::isEOF() const
+{
+    return (depth_meta_data_.FrameID() != frames_);
 }
 
 void OniPlayer::toMsgImage(const xn::DepthMetaData& depth_meta_data,

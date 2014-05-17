@@ -8,5 +8,5 @@ bool open
 int64 progress
 int64 progress_max
 float64 total_time
-uint64 total_vicon_frames
-uint64 total_depth_sensor_frames
+uint32 total_vicon_frames
+uint32 total_depth_sensor_frames

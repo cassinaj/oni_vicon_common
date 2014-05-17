@@ -38,19 +38,20 @@
  */
 
 /**
- * @date 05/04/2014
+ * @date 05/14/2014
  * @author Jan Issac (jan.issac@gmail.com)
  * Max-Planck-Institute for Intelligent Systems, University of Southern California (USC),
  *   Karlsruhe Institute of Technology (KIT)
  */
 
+#ifndef ONI_VICON_PLAYER_ONI_VICON_PLAYBACK_SERVER_HPP
+#define ONI_VICON_PLAYER_ONI_VICON_PLAYBACK_SERVER_HPP
 
-#ifndef ONI_VICON_PLAYER_ONI_PLAYER_HPP
-#define ONI_VICON_PLAYER_ONI_PLAYER_HPP
+// c++/std
+#include <string>
+#include <stdint.h>
 
-#include <boost/thread/mutex.hpp>
-#include <boost/shared_ptr.hpp>
-
+// ros
 #include <ros/ros.h>
 #include <image_transport/image_transport.h>
 #include <sensor_msgs/CameraInfo.h>
@@ -58,35 +59,70 @@
 #include <sensor_msgs/image_encodings.h>
 #include <sensor_msgs/PointCloud2.h>
 
-#include <ni/XnCppWrapper.h>
-
+// oni_vicon_common
 #include <oni_vicon_common/types.hpp>
+
+#include "oni_vicon_player/oni_player.hpp"
+#include "oni_vicon_player/vicon_player.hpp"
 
 namespace oni_vicon_player
 {
-    class OniPlayer
+    class OniViconPlayback
     {
     public:
-        typedef boost::shared_ptr<OniPlayer> Ptr;
+        typedef boost::shared_ptr<OniViconPlayback> Ptr;
 
     public:
-        OniPlayer();
-        virtual ~OniPlayer();
+        /**
+         * @brief OniViconPlayback Creates an instance of ONI-Vicon playback
+         *
+         * @param oni_player    Used OniPlayer to read ONI depth frames
+         * @param vicon_player  Used ViconPlayer to read the vicon poses
+         */
+        OniViconPlayback(OniPlayer::Ptr oni_player,
+                         ViconPlayer::Ptr vicon_player);
 
         /**
-         * @brief open
-         * @param source_file
-         * @param camera_intrinsics
+         * @brief open opens an ONI-Vicon recording
          *
-         * @throw OpenOniFileException
+         * @param recording Record directory
          */
-        void open(const std::string &source_file, const
-                  oni_vicon::CameraIntrinsics& camera_intrinsics);
-        bool processNextFrame();
-        bool close();
+        void open(const std::string& record_dir,
+                  ViconPlayer::LoadUpdateCallback update_cb = ViconPlayer::LoadUpdateCallback());
 
-        bool seekToFrame(uint32_t frameID);
-        bool setPlaybackSpeed(double speed);
+        /**
+         * @brief close
+         */
+        void close();
+
+        /**
+         * @brief play
+         * @param starting_frame
+         */
+        void play(uint32_t starting_frame);
+
+        /**
+         * @brief stop
+         */
+        void stop();
+
+        /**
+         * @brief nextFrame
+         * @return
+         */
+        uint32_t nextFrame();
+
+        /**
+         * @brief seekToFrame
+         * @param starting_frame
+         */
+        void seekToFrame(uint32_t starting_frame);
+
+        /**
+         * @brief setPlaybackSpeed
+         * @param speed
+         */
+        void setPlaybackSpeed(double speed);
 
         /**
          * @brief isEOF
@@ -94,47 +130,54 @@ namespace oni_vicon_player
          */
         bool isEOF() const;
 
-        uint32_t currentFrameID() const;
-        const xn::DepthMetaData& currentDepthMetaData() const;
-        sensor_msgs::ImagePtr currentDepthImageMsg();
-        sensor_msgs::PointCloud2Ptr currentPointCloud2Msg();
-
-        uint32_t countFrames() const;
-
-    public:
         /**
-         * @brief toMsgImage converts an ONI depth image into a ros imag e message
-         *
-         * @param [in]   depth_meta_data   OpenNI DepthMetaData
-         * @param [out]  image             Ros image message
+         * @brief isOpen
+         * @return
          */
-        void toMsgImage(const xn::DepthMetaData& depth_meta_data,
-                        sensor_msgs::ImagePtr image) const;
+        bool isOpen() const;
 
-        float toMeter(const XnDepthPixel& depth_pixel) const;
-        float toMillimeter(const XnDepthPixel& depth_pixel) const;
+        /**
+         * @brief isPlaying
+         * @return
+         */
+        bool isPlaying() const;
+
+        /**
+         * @brief oniPlayer
+         *
+         * @return
+         */
+        OniPlayer::Ptr oniPlayer();
+
+        /**
+         * @brief viconPlayer
+         * @return
+         */
+        ViconPlayer::Ptr viconPlayer();
+
+        /**
+         * @brief transformer
+         * @return
+         */
+        const oni_vicon::Transformer& transformer() const;
 
     private:
-        /* OpenNI player */
-        xn::Context context_;
-        xn::Player player_;
-        xn::DepthGenerator depth_generator_;
-        XnUInt64 no_sample_value_;
-        XnUInt64 shadow_value_;
+        OniPlayer::Ptr oni_player_;
+        ViconPlayer::Ptr vicon_player_;
 
-        oni_vicon::CameraIntrinsics camera_intrinsics_;
-        boost::mutex read_write_mutex_;
+        oni_vicon::Transformer calibration_transform_;
 
-        /* frame data */
-        xn::DepthMetaData depth_meta_data_;
-        XnUInt32 frames_;
+        bool open_;
+        bool playing_;
+        uint32_t seeking_frame_;
 
-        /* cache */
-        sensor_msgs::PointCloud2Ptr cache_msg_pointcloud_;
-        sensor_msgs::ImagePtr cache_msg_image_;
+        sensor_msgs::PointCloud2Ptr msg_pointcloud_;
+        sensor_msgs::ImagePtr msg_image_;
+
         bool msg_image_dirty_;
         bool msg_pointcloud_dirty_;
     };
+
 }
 
 #endif

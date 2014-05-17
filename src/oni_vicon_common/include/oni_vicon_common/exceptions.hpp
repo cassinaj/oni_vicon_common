@@ -38,93 +38,50 @@
  */
 
 /**
- * @date 05/04/2014
+ * @date 05/14/2014
  * @author Jan Issac (jan.issac@gmail.com)
  * Max-Planck-Institute for Intelligent Systems, University of Southern California (USC),
  *   Karlsruhe Institute of Technology (KIT)
  */
 
+#ifndef ONI_VICON_COMMON_EXCEPTION_HPP
+#define ONI_VICON_COMMON_EXCEPTION_HPP
 
-#ifndef ONI_VICON_PLAYER_VICON_PLAYER_HPP
-#define ONI_VICON_PLAYER_VICON_PLAYER_HPP
+#include <string>
+#include <exception>
 
-#include <oni_vicon_common/transformer.hpp>
-
-// C++/STD
-#include <vector>
-#include <map>
-
-#include <boost/function.hpp>
-
-// ros
-#include <ros/ros.h>
-#include <geometry_msgs/Pose.h>
-#include <geometry_msgs/PoseStamped.h>
-#include <tf/LinearMath/Vector3.h>
-#include <tf/LinearMath/Quaternion.h>
-#include <tf/LinearMath/Scalar.h>
-#include <tf/LinearMath/Transform.h>
-#include <ros/ros.h>
-#include <sensor_msgs/Image.h>
-
-namespace oni_vicon_player
+namespace oni_vicon
 {
-    class ViconPlayer
+    class Exception:
+            public std::exception
     {
     public:
-        typedef boost::shared_ptr<ViconPlayer> Ptr;
-        typedef boost::function<void (uint32_t, uint32_t)> LoadUpdateCallback;
-
-        enum
+        Exception(const std::string& _what):
+            what_(_what)
         {
-            CLOSEST,
-            INTERPOLATE
-        };
 
-        struct RawRecord
+        }
+
+        ~Exception() throw()
         {
-            int64_t vicon_time;
-            uint32_t vicon_frame;
-            int64_t depth_sensor_time;
-            uint32_t depth_sensor_frame;
-            uint32_t vicon_frame_id;
-            float translation_x;
-            float translation_y;
-            float translation_z;
-            float orientation_w;
-            float orientation_x;
-            float orientation_y;
-            float orientation_z;
-        };
 
-        struct PoseRecord
+        }
+
+        virtual const char* what() const throw()
         {
-            ros::Time stamp;
-            tf::Pose pose;
-        };
+            return what_.c_str();
+        }
 
+    protected:
+        std::string what_;
+    };
+
+    class LoadingCalibrationException:
+            public Exception
+    {
     public:
-        explicit ViconPlayer();
-        virtual ~ViconPlayer();
-
-        bool load(const std::string &source_file,
-                  const oni_vicon::Transformer& calibration_transform,
-                  LoadUpdateCallback update_cb = LoadUpdateCallback());
-
-        const PoseRecord& pose(uint32_t frame);
-
-
-        uint32_t countViconFrames() const;
-        uint32_t countDepthSensorFrames() const;
-
-    private:        
-        RawRecord closestViconFrame(const RawRecord& oni_frame);
-
-        std::vector<RawRecord> raw_data_;
-        std::map<uint32_t, PoseRecord> data_;        
-
-        uint32_t start_offset_;
-        bool time_is_in_ms_;
+        LoadingCalibrationException(const std::string& _what):
+            Exception(_what){ }
     };
 }
 

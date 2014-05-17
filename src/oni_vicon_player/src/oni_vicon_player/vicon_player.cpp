@@ -49,17 +49,14 @@
 #include <iostream>
 #include <fstream>
 
-#include <visualization_msgs/Marker.h>
-
 using namespace oni_vicon;
 using namespace oni_vicon_player;
 
-ViconPlayer::ViconPlayer(ros::NodeHandle& node_handle):
+ViconPlayer::ViconPlayer():
     start_offset_(0),
     time_is_in_ms_(false)
 {
-    object_publisher_ =
-            node_handle.advertise<visualization_msgs::Marker>("vicon_object_pose", 0);
+
 }
 
 ViconPlayer::~ViconPlayer()
@@ -69,7 +66,7 @@ ViconPlayer::~ViconPlayer()
 
 bool ViconPlayer::load(const std::string& source_file,
                        const Transformer &calibration_transform,
-                       boost::function<void(int64_t)> updateCb)
+                       LoadUpdateCallback update_cb)
 {    
     std::ifstream data_file(source_file.c_str());
 
@@ -167,11 +164,11 @@ bool ViconPlayer::load(const std::string& source_file,
 
         data_[record.depth_sensor_frame] = pose_record;
 
-        updateCb(data_.size());
+        update_cb(0, data_.size());
 
         if (countDepthSensorFrames() != record.depth_sensor_frame)
         {
-            ROS_WARN("%ld !- %ld", countDepthSensorFrames(), record.depth_sensor_frame);
+            ROS_WARN("%ud != %ud", countDepthSensorFrames(), record.depth_sensor_frame);
         }
     }
 
@@ -182,17 +179,17 @@ bool ViconPlayer::load(const std::string& source_file,
     return true;
 }
 
-const ViconPlayer::PoseRecord& ViconPlayer::poseRecord(int64_t frame)
+const ViconPlayer::PoseRecord& ViconPlayer::pose(uint32_t frame)
 {
     return data_[frame];
 }
 
-int64_t ViconPlayer::countViconFrames()
+uint32_t ViconPlayer::countViconFrames() const
 {
     return raw_data_.size();
 }
 
-int64_t ViconPlayer::countDepthSensorFrames()
+uint32_t ViconPlayer::countDepthSensorFrames() const
 {
     return data_.size();
 }
@@ -223,38 +220,3 @@ ViconPlayer::RawRecord ViconPlayer::closestViconFrame(const ViconPlayer::RawReco
     return selected_record;
 }
 
-
-void ViconPlayer::publish(const ViconPlayer::PoseRecord& pose_record,
-                          sensor_msgs::ImagePtr corresponding_image,
-                          const std::string& object_display)
-{
-    visualization_msgs::Marker marker;
-    marker.header.frame_id = corresponding_image->header.frame_id;
-    marker.header.stamp =  corresponding_image->header.stamp;
-    marker.ns = "vicon_object_pose";
-    marker.id = 0;
-    marker.scale.x = 1.0;
-    marker.scale.y = 1.0;
-    marker.scale.z = 1.0;
-    marker.color.r = 1;
-    marker.color.g = 0;
-    marker.color.b = 0;
-    marker.color.a = 1;
-
-    marker.type = visualization_msgs::Marker::MESH_RESOURCE;
-    marker.action = visualization_msgs::Marker::ADD;
-
-    marker.pose.position.x = pose_record.pose.getOrigin().getX();
-    marker.pose.position.y = pose_record.pose.getOrigin().getY();
-    marker.pose.position.z = pose_record.pose.getOrigin().getZ();
-
-    tf::Quaternion orientation = pose_record.pose.getRotation();
-    marker.pose.orientation.w = orientation.getW();
-    marker.pose.orientation.x = orientation.getX();
-    marker.pose.orientation.y = orientation.getY();
-    marker.pose.orientation.z = orientation.getZ();
-
-    marker.mesh_resource = object_display;
-
-    object_publisher_.publish(marker);    
-}
