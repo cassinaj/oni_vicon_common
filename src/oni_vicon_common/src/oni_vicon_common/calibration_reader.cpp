@@ -44,11 +44,77 @@
  *   Karlsruhe Institute of Technology (KIT)
  */
 
+#include <iostream>
+#include <fstream>
+
 #include "oni_vicon_common/calibration_reader.hpp"
 
+using namespace oni_vicon;
 
+bool CalibrationReader::loadGlobalCalibration(const std::string& source,
+                                              GlobalCalibration& global_calibration)
+{
+    try
+    {
+        YAML::Node doc;
+        loadCalibration(source, doc);
+        globalCalibrationFromYaml(doc, global_calibration);
+    }
+    catch(YAML::ParserException& e) {
+        std::cout << e.what() << "\n";
+        return false;
+    }
 
-void loadCalibrationDoc(const std::string& source, YAML::Node& doc)
+    return true;
+}
+
+bool CalibrationReader::loadLocalCalibration(const std::string& source,
+                                             LocalCalibration& local_calibration)
+{
+    try
+    {
+        YAML::Node doc;
+        loadCalibration(source, doc);
+        localCalibrationFromYaml(doc, local_calibration);
+    }
+    catch(YAML::ParserException& e) {
+        std::cout << e.what() << "\n";
+        return false;
+    }
+
+    return true;
+}
+
+void CalibrationReader::globalCalibrationFromYaml(const YAML::Node& doc,
+                                                  GlobalCalibration& global_calibration)
+{
+    tf::Transform global_transform;
+    CameraIntrinsics camera_intrinsics;
+
+    doc["global_calibration"]["vicon_global_frame"] >> global_transform;
+    doc["global_calibration"]["camera_intrinsics"] >> camera_intrinsics;
+
+    global_calibration.viconToCameraTransform(global_transform);
+    global_calibration.cameraIntrinsics(camera_intrinsics);
+}
+
+void CalibrationReader::localCalibrationFromYaml(const YAML::Node& doc,
+                                                 LocalCalibration& local_calibration)
+{
+    tf::Transform local_transform;
+    std::string object;
+    std::string object_display;
+
+    doc["local_calibration"]["vicon_local_to_object_local_frame"] >> local_transform;
+    doc["local_calibration"]["object_mesh"] >> object;
+    doc["local_calibration"]["object_mesh_display"] >> object_display;
+
+    local_calibration.viconLocalToCameraLocal(local_transform);
+    local_calibration.object(object);
+    local_calibration.objectDisplay(object_display);
+}
+
+bool CalibrationReader::loadCalibration(const std::string& source, YAML::Node& doc)
 {
     std::ifstream calibration_file(source.c_str());
     YAML::Parser parser(calibration_file);

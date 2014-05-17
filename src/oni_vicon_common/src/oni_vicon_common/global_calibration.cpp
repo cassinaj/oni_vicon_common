@@ -81,7 +81,7 @@ tf::Pose GlobalCalibration::transformViconToCamera(const tf::Pose& vicon_pose) c
 }
 
 void GlobalCalibration::transformViconToCamera(const tf::Pose& vicon_pose,
-                                                          tf::Pose& camera_pose) const
+                                               tf::Pose& camera_pose) const
 {
     camera_pose.mult(vicon_to_camera_transform_, vicon_pose);
 }

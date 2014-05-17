@@ -47,7 +47,10 @@
 #include "oni_vicon_player/oni_vicon_player.hpp"
 
 #include <boost/filesystem.hpp>
+#include <oni_vicon_common/calibration_reader.hpp>
+#include <oni_vicon_common/type_conversion.hpp>
 
+using namespace oni_vicon;
 using namespace oni_vicon_player;
 using namespace depth_sensor_vicon_calibration;
 
@@ -134,7 +137,7 @@ void OniViconPlayer::playCb(const PlayGoalConstPtr& goal)
         }
 
         // get depth sensor frame
-        sensor_msgs::ImagePtr depth_msg = oni_player_.depthFrameAsMsgImage();
+        sensor_msgs::ImagePtr depth_msg = oni_player_.currentDepthImageMsg();
 
         // get corresponding vicon frame
         ViconPlayer::PoseRecord vicon_pose = vicon_player_.poseRecord(oni_player_.currentFrameID());
@@ -155,8 +158,7 @@ void OniViconPlayer::playCb(const PlayGoalConstPtr& goal)
                               calibration_transform_.objectDisplay());
 
         // publish evaluation data
-
-        feedback.current_time = oni_player_.currentFrameID()/30.;
+        feedback.current_time = oni_player_.currentFrameID() / 30.;
         feedback.current_vicon_frame = 0;
         feedback.current_depth_sensor_frame = oni_player_.currentFrameID();
         play_as_.publishFeedback(feedback);
@@ -187,15 +189,27 @@ void OniViconPlayer::openCb(const OpenGoalConstPtr& goal)
     std::string global_calib_file = (record_path / "global_calibration.yaml").string();
     std::string local_calib_file = (record_path / "local_calibration.yaml").string();
 
+    CalibrationReader calibration_reader;
+    LocalCalibration local_calibration;
+    GlobalCalibration global_calibration;
+
     // Create calibration transform from calibration files    
-    if (!calibration_transform_.loadGlobalCalibration(global_calib_file))
+    if (calibration_reader.loadGlobalCalibration(global_calib_file, global_calibration))
+    {
+        calibration_transform_.globalCalibration(global_calibration);
+    }
+    else
     {
         result.message = "Loading global calibration file <" + global_calib_file + "> failed";
         open_as_.setAborted(result);
         return;
     }       
 
-    if (!calibration_transform_.loadLocalCalibration(local_calib_file))
+    if (calibration_reader.loadLocalCalibration(local_calib_file, local_calibration))
+    {
+        calibration_transform_.localCalibration(local_calibration);
+    }
+    else
     {
         result.message = "Loading local calibration file <" + local_calib_file + "> failed";
         open_as_.setAborted(result);
@@ -293,7 +307,7 @@ void OniViconPlayer::publish(sensor_msgs::ImagePtr depth_msg)
     if (pub_depth_info_.getNumSubscribers() > 0)
     {
         sensor_msgs::CameraInfoPtr camera_info =
-                Transformer::toCameraInfo(calibration_transform_.cameraIntrinsics());
+                oni_vicon::toCameraInfo(calibration_transform_.cameraIntrinsics());
         camera_info->header.frame_id = depth_msg->header.frame_id;
         camera_info->header.stamp = depth_msg->header.stamp;
         camera_info->height = depth_msg->height;
@@ -310,82 +324,10 @@ void OniViconPlayer::publish(sensor_msgs::ImagePtr depth_msg)
     if (pub_point_cloud_.getNumSubscribers () > 0)
     {
         sensor_msgs::PointCloud2Ptr points_msg = boost::make_shared<sensor_msgs::PointCloud2>();
-        oni_player_.toMsgPointCloud(depth_msg,
-                                    calibration_transform_.cameraIntrinsics(),
-                                    points_msg);
+        oni_vicon::toMsgPointCloud(depth_msg,
+                                   calibration_transform_.cameraIntrinsics(),
+                                   points_msg);
 
         pub_point_cloud_.publish(points_msg);
     }
-}
-
-
-void toMsgImage(const xn::DepthMetaData& depth_meta_data,
-                sensor_msgs::ImagePtr image,
-                const GeneratorProperties& generator_properties,
-                Unit unit)
-{
-    // all depth data is relative to the rgb frame since we take registered data by default
-    image->encoding = sensor_msgs::image_encodings::TYPE_32FC1;
-    image->height = depth_meta_data.YRes();
-    image->width = depth_meta_data.XRes();
-    image->step = image->width * sizeof(float);
-    image->data.resize (image->height * image->step);
-
-    // copy and convert data data
-    float* data = reinterpret_cast<float*>(&image->data[0]);
-    for (unsigned int i = 0, k = 0; i < image->height; i++)
-    {
-        for (unsigned int j = 0; j < image->width; ++j, ++k, ++data)
-        {
-            switch (unit)
-            {
-            case Millimeter:
-                *data = toMillimeter(depth_meta_data[k], generator_properties);
-                break;
-            case Meter:
-                *data = toMeter(depth_meta_data[k], generator_properties);
-                break;
-            }
-        }
-    }
-}
-
-
-
-float toMeter(const XnDepthPixel& depth_pixel,
-              const GeneratorProperties& generator_properties)
-{
-    if (depth_pixel == 0)
-    {
-        return generator_properties.value_for_zero;
-    }
-    else if (depth_pixel == generator_properties.no_sample_value)
-    {
-        return generator_properties.value_for_no_sample;
-    }
-    else if (depth_pixel == generator_properties.shadow_value)
-    {
-        return generator_properties.value_for_shadow;
-    }
-
-    return float(depth_pixel);
-}
-
-float toMillimeter(const XnDepthPixel &depth_pixel,
-                   const GeneratorProperties& generator_properties)
-{
-    if (depth_pixel == 0)
-    {
-        return generator_properties.value_for_zero;
-    }
-    else if (depth_pixel == generator_properties.no_sample_value)
-    {
-        return generator_properties.value_for_no_sample;
-    }
-    else if (depth_pixel == generator_properties.shadow_value)
-    {
-        return generator_properties.value_for_shadow;
-    }
-
-    return float(depth_pixel);
 }

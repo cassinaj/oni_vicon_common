@@ -69,12 +69,14 @@ set(oni_vicon_player_SOURCES
     src/${PROJECT_NAME}/oni_player.cpp
     src/${PROJECT_NAME}/vicon_player.cpp
     src/${PROJECT_NAME}/oni_vicon_player.cpp
+    src/${PROJECT_NAME}/oni_vicon_playback_server.cpp
 )
 
 set(oni_vicon_player_HEADERS
     include/${PROJECT_NAME}/oni_player.hpp
     include/${PROJECT_NAME}/vicon_player.hpp
     include/${PROJECT_NAME}/oni_vicon_player.hpp
+    include/${PROJECT_NAME}/oni_vicon_playback_server.hpp
 )
 
 include_directories(include

@@ -102,49 +102,16 @@ namespace oni_vicon_player
 
         void publish(sensor_msgs::ImagePtr image);
 
+        sensor_msgs::ImagePtr depthFrameAsMsgImage();
+        sensor_msgs::PointCloud2Ptr depthFrameAsMsgPointCloud();
 
-        /**
-         * @brief toMsgImage converts an ONI depth image into a ros imag e message
-         *
-         * @param [in]   depth_meta_data   OpenNI DepthMetaData
-         * @param [out]  image             Ros image message
-         */
+
         void toMsgImage(const xn::DepthMetaData& depth_meta_data,
                         sensor_msgs::ImagePtr image,
-                        const GeneratorProperties generator_properties,
-                        Unit unit = Meter);
+                        oni_vicon::Unit unit = oni_vicon::Meter);
 
-        /**
-         * @brief toMsgPointCloud convers a ros image message into a ros point cloud message
-         *
-         * Convers a ros image message into a ros point cloud message. This requires the camera
-         * intrinsic parameters to compute the point cloud
-         *
-         * @param [in]   image              Ros image message
-         * @param [in]   camera_intrinsics  Used camera intrinsics which was used to capture the image
-         * @param [out]  point_cloud        Resulting point cloud
-         */
-        void toMsgPointCloud(const sensor_msgs::ImagePtr& image,
-                             const CameraIntrinsics& camera_intrinsics,
-                             sensor_msgs::PointCloud2Ptr point_cloud);
-
-
-        /**
-         * @brief toPoint3d Converts a pixel (u,v) with a depth value to a 3D point
-         * @param [in] u                    u-coordinate of the pixel
-         * @param [in] v                    v-coordinate of the pixel
-         * @param [in] depth                pixel depth value, e.g. from the depth image
-         * @param [in] camera_intrinsics    camera intrinsics used to capture the image
-         *
-         * @return Point3d
-         */
-        Point3d toPoint3d(float u, float v, float depth, const CameraIntrinsics& camera_intrinsics);
-
-        float toMeter(const XnDepthPixel& depth_pixel,
-                      const GeneratorProperties& generator_properties);
-
-        float toMillimeter(const XnDepthPixel& depth_pixel,
-                           const GeneratorProperties& generator_properties);
+        float toMeter(const XnDepthPixel& depth_pixel) const;
+        float toMillimeter(const XnDepthPixel& depth_pixel) const;
 
     private:
         boost::mutex player_lock_;
@@ -163,7 +130,7 @@ namespace oni_vicon_player
         OniPlayer& oni_player_;
         ViconPlayer& vicon_player_;
 
-        depth_sensor_vicon_calibration::Transformer calibration_transform_;
+        oni_vicon::Transformer calibration_transform_;
 
         actionlib::SimpleActionServer<OpenAction> open_as_;
         actionlib::SimpleActionServer<PlayAction> play_as_;
@@ -178,6 +145,13 @@ namespace oni_vicon_player
         bool playing_;
         bool paused_;
         XnUInt32 seeking_frame_;
+
+
+        sensor_msgs::PointCloud2Ptr msg_pointcloud_;
+        sensor_msgs::ImagePtr msg_image_;
+
+        bool msg_image_dirty_;
+        bool msg_pointcloud_dirty_;
     };
 }
 

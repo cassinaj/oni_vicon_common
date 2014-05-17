@@ -44,179 +44,187 @@
  *   Karlsruhe Institute of Technology (KIT)
  */
 
+#include <ros/ros.h>
+
+#if ROS_VERSION_MINIMUM(1, 3, 0)
+#include <sensor_msgs/distortion_models.h>
+#endif
+
 #include "oni_vicon_common/type_conversion.hpp"
 
-using namespace oni_vicon;
-
-void toMsgPointCloud(const sensor_msgs::ImagePtr& image,
-                     const CameraIntrinsics& camera_intrinsics,
-                     sensor_msgs::PointCloud2Ptr points)
+namespace oni_vicon
 {
-    points->header.frame_id = image->header.frame_id;
-    points->header.stamp = image->header.stamp;
-    points->height = image->height;
-    points->width = image->width;
-    points->is_dense = false;
-    points->is_bigendian = false;
-    points->fields.resize(3);
-    points->fields[0].name = "x";
-    points->fields[1].name = "y";
-    points->fields[2].name = "z";
-
-    int offset = 0;
-    for (size_t d = 0; d < points->fields.size(); ++d, offset += sizeof(float))
+    void toMsgPointCloud(const sensor_msgs::ImagePtr& image,
+                         const CameraIntrinsics& camera_intrinsics,
+                         sensor_msgs::PointCloud2Ptr points)
     {
-        points->fields[d].offset = offset;
-        points->fields[d].datatype = sensor_msgs::PointField::FLOAT32;
-        points->fields[d].count  = 1;
-    }
+        points->header.frame_id = image->header.frame_id;
+        points->header.stamp = image->header.stamp;
+        points->height = image->height;
+        points->width = image->width;
+        points->is_dense = false;
+        points->is_bigendian = false;
+        points->fields.resize(3);
+        points->fields[0].name = "x";
+        points->fields[1].name = "y";
+        points->fields[2].name = "z";
 
-    points->point_step = offset;
-    points->row_step = points->point_step * points->width;
-    points->data.resize(points->width * points->height * points->point_step);
-
-    const float* depth_data = reinterpret_cast<const float*>(&image->data[0]);
-    float* point_data = reinterpret_cast<float*>(&points->data[0]);
-
-    Point3d p;
-    for(int  v = 0, k = 0; v < image->height; ++v)
-    {
-        for(int u = 0; u < image->width; ++u, ++k, ++point_data)
+        int offset = 0;
+        for (size_t d = 0; d < points->fields.size(); ++d, offset += sizeof(float))
         {
-            p = toPoint3d(u, v, depth_data[k], camera_intrinsics);
+            points->fields[d].offset = offset;
+            points->fields[d].datatype = sensor_msgs::PointField::FLOAT32;
+            points->fields[d].count  = 1;
+        }
 
-            *point_data++ = p.x;
-            *point_data++ = p.y;
-            *point_data = p.z;
+        points->point_step = offset;
+        points->row_step = points->point_step * points->width;
+        points->data.resize(points->width * points->height * points->point_step);
+
+        const float* depth_data = reinterpret_cast<const float*>(&image->data[0]);
+        float* point_data = reinterpret_cast<float*>(&points->data[0]);
+
+        Point3d p;
+        for(int  v = 0, k = 0; v < image->height; ++v)
+        {
+            for(int u = 0; u < image->width; ++u, ++k, ++point_data)
+            {
+                p = toPoint3d(u, v, depth_data[k], camera_intrinsics);
+
+                *point_data++ = p.x;
+                *point_data++ = p.y;
+                *point_data = p.z;
+            }
         }
     }
-}
 
-Point3d toPoint3d(float u, float v, float depth, const CameraIntrinsics& camera_intrinsics)
-{
-    Point3d point;
-
-    static float bad_point = std::numeric_limits<float>::quiet_NaN();
-
-    if (depth == bad_point)
+    Point3d toPoint3d(float u, float v, float depth, const CameraIntrinsics& camera_intrinsics)
     {
-        point.x = point.y = point.z = bad_point;
+        Point3d point;
+
+        static float bad_point = std::numeric_limits<float>::quiet_NaN();
+
+        if (depth == bad_point)
+        {
+            point.x = point.y = point.z = bad_point;
+            return point;
+        }
+
+        point.z = depth;
+        point.x = (u - camera_intrinsics.cx) * depth / camera_intrinsics.f;
+        point.y = (v - camera_intrinsics.cy) * depth / camera_intrinsics.f;
+
         return point;
     }
 
-    point.z = depth;
-    point.x = (u - camera_intrinsics.cx) * depth / camera_intrinsics.f;
-    point.y = (v - camera_intrinsics.cy) * depth / camera_intrinsics.f;
+    void toMsgPose(const tf::Pose& tf_pose, geometry_msgs::Pose& msg_pose)
+    {
+        msg_pose.position.x = tf_pose.getOrigin().getX();
+        msg_pose.position.y = tf_pose.getOrigin().getY();
+        msg_pose.position.z = tf_pose.getOrigin().getZ();
 
-    return point;
-}
+        tf::Quaternion orientation = tf_pose.getRotation();
+        msg_pose.orientation.w = orientation.getW();
+        msg_pose.orientation.x = orientation.getX();
+        msg_pose.orientation.y = orientation.getY();
+        msg_pose.orientation.z = orientation.getZ();
+    }
 
-void toMsgPose(const tf::Pose& tf_pose, geometry_msgs::Pose& msg_pose)
-{
-    msg_pose.position.x = tf_pose.getOrigin().getX();
-    msg_pose.position.y = tf_pose.getOrigin().getY();
-    msg_pose.position.z = tf_pose.getOrigin().getZ();
+    void toTfPose(const geometry_msgs::Pose& msg_pose, tf::Pose& tf_pose)
+    {
+        tf_pose.setOrigin(tf::Vector3(msg_pose.position.x,
+                                      msg_pose.position.y,
+                                      msg_pose.position.z));
 
-    tf::Quaternion orientation = tf_pose.getRotation();
-    msg_pose.orientation.w = orientation.getW();
-    msg_pose.orientation.x = orientation.getX();
-    msg_pose.orientation.y = orientation.getY();
-    msg_pose.orientation.z = orientation.getZ();
-}
+        tf_pose.setRotation(tf::Quaternion(msg_pose.orientation.x,
+                                           msg_pose.orientation.y,
+                                           msg_pose.orientation.z,
+                                           msg_pose.orientation.w));
+    }
 
-void toTfPose(const geometry_msgs::Pose& msg_pose, tf::Pose& tf_pose)
-{
-    tf_pose.setOrigin(tf::Vector3(msg_pose.position.x,
-                                  msg_pose.position.y,
-                                  msg_pose.position.z));
+    void toTfTransform(const geometry_msgs::Pose& msg_pose, tf::Transform& tf_transform)
+    {
+        toTfPose(msg_pose, tf_transform);
+    }
 
-    tf_pose.setRotation(tf::Quaternion(msg_pose.orientation.x,
-                                       msg_pose.orientation.y,
-                                       msg_pose.orientation.z,
-                                       msg_pose.orientation.w));
-}
+    void toCameraIntrinsics(
+            sensor_msgs::CameraInfoConstPtr msg_camera_info,
+            CameraIntrinsics& camera_intrinsics)
+    {
+        camera_intrinsics.f = (msg_camera_info->K[0] + msg_camera_info->K[4])/2.;
+        camera_intrinsics.cx = msg_camera_info->K[2];
+        camera_intrinsics.cy = msg_camera_info->K[5];
+    }
 
-void toTfTransform(const geometry_msgs::Pose& msg_pose, tf::Transform& tf_transform)
-{
-    toTfPose(msg_pose, tf_transform);
-}
+    void toCameraInfo(const CameraIntrinsics& camera_intrinsics,
+                      sensor_msgs::CameraInfoPtr msg_camera_info)
+    {
+        /*
+         * be aware to set these !
+        msg_camera_info->header.stamp    = ;
+        msg_camera_info->header.frame_id = ;
+        msg_camera_info->width           = ;
+        msg_camera_info->height          = ;
+        */
 
-void toCameraIntrinsics(
-        sensor_msgs::CameraInfoConstPtr msg_camera_info,
-        CameraIntrinsics& camera_intrinsics)
-{
-    camera_intrinsics.f = (msg_camera_info->K[0] + msg_camera_info->K[4])/2.;
-    camera_intrinsics.cx = msg_camera_info->K[2];
-    camera_intrinsics.cy = msg_camera_info->K[5];
-}
+        /* taken from arm_rgbd package */
 
-void toCameraInfo(const CameraIntrinsics& camera_intrinsics,
-                  sensor_msgs::CameraInfoPtr msg_camera_info)
-{
-    /*
-     * be aware to set these !
-    msg_camera_info->header.stamp    = ;
-    msg_camera_info->header.frame_id = ;
-    msg_camera_info->width           = ;
-    msg_camera_info->height          = ;
-    */
+    #if ROS_VERSION_MINIMUM(1, 3, 0)
+        msg_camera_info->D = std::vector<double>(5, 0.0);
+        msg_camera_info->distortion_model = sensor_msgs::distortion_models::PLUMB_BOB;
+    #else
+        msg_camera_info->D.assign (0.0);
+    #endif
+        msg_camera_info->K.assign (0.0);
+        msg_camera_info->R.assign (0.0);
+        msg_camera_info->P.assign (0.0);
+        // Simple camera matrix: square pixels, principal point at center
+        msg_camera_info->K[0] = msg_camera_info->K[4] = camera_intrinsics.f;
+        msg_camera_info->K[2] = camera_intrinsics.cx;
+        msg_camera_info->K[5] = camera_intrinsics.cy;
+        msg_camera_info->K[8] = 1.0;
+        // no rotation: identity
+        msg_camera_info->R[0] = msg_camera_info->R[4] = msg_camera_info->R[8] = 1.0;
+        // no rotation, no translation => P=K(I|0)=(K|0)
+        msg_camera_info->P[0] = msg_camera_info->P[5] = msg_camera_info->K[0];
+        msg_camera_info->P[2] = msg_camera_info->K[2];
+        msg_camera_info->P[6] = msg_camera_info->K[5];
+        msg_camera_info->P[10] = 1.0;
+    }
 
-    /* taken from arm_rgbd package */
+    geometry_msgs::Pose toMsgPose(const tf::Pose& tf_pose)
+    {
+        geometry_msgs::Pose pose;
+        toMsgPose(tf_pose, pose);
+        return pose;
+    }
 
-#if ROS_VERSION_MINIMUM(1, 3, 0)
-    msg_camera_info->D = std::vector<double>(5, 0.0);
-    msg_camera_info->distortion_model = sensor_msgs::distortion_models::PLUMB_BOB;
-#else
-    msg_camera_info->D.assign (0.0);
-#endif
-    msg_camera_info->K.assign (0.0);
-    msg_camera_info->R.assign (0.0);
-    msg_camera_info->P.assign (0.0);
-    // Simple camera matrix: square pixels, principal point at center
-    msg_camera_info->K[0] = msg_camera_info->K[4] = camera_intrinsics.f;
-    msg_camera_info->K[2] = camera_intrinsics.cx;
-    msg_camera_info->K[5] = camera_intrinsics.cy;
-    msg_camera_info->K[8] = 1.0;
-    // no rotation: identity
-    msg_camera_info->R[0] = msg_camera_info->R[4] = msg_camera_info->R[8] = 1.0;
-    // no rotation, no translation => P=K(I|0)=(K|0)
-    msg_camera_info->P[0] = msg_camera_info->P[5] = msg_camera_info->K[0];
-    msg_camera_info->P[2] = msg_camera_info->K[2];
-    msg_camera_info->P[6] = msg_camera_info->K[5];
-    msg_camera_info->P[10] = 1.0;
-}
+    tf::Pose toTfPose(const geometry_msgs::Pose& msg_pose)
+    {
+        tf::Pose pose;
+        toTfPose(msg_pose, pose);
+        return pose;
+    }
 
-geometry_msgs::Pose toMsgPose(const tf::Pose& tf_pose)
-{
-    geometry_msgs::Pose pose;
-    toMsgPose(tf_pose, pose);
-    return pose;
-}
+    tf::Transform toTfTransform(const geometry_msgs::Pose& msg_pose)
+    {
+        tf::Transform transform;
+        toTfTransform(msg_pose, transform);
+        return transform;
+    }
 
-tf::Pose toTfPose(const geometry_msgs::Pose& msg_pose)
-{
-    tf::Pose pose;
-    toTfPose(msg_pose, pose);
-    return pose;
-}
+    CameraIntrinsics toCameraIntrinsics(sensor_msgs::CameraInfoConstPtr msg_camera_info)
+    {
+        CameraIntrinsics camera_intrinsics;
+        toCameraIntrinsics(msg_camera_info, camera_intrinsics);
+        return camera_intrinsics;
+    }
 
-tf::Transform toTfTransform(const geometry_msgs::Pose& msg_pose)
-{
-    tf::Transform transform;
-    toTfTransform(msg_pose, transform);
-    return transform;
-}
+    sensor_msgs::CameraInfoPtr toCameraInfo(const CameraIntrinsics& camera_intrinsics)
+    {
+        sensor_msgs::CameraInfoPtr msg_camera_info = boost::make_shared<sensor_msgs::CameraInfo>();
+        toCameraInfo(camera_intrinsics, msg_camera_info);
+        return msg_camera_info;
+    }
 
-CameraIntrinsics toCameraIntrinsics(sensor_msgs::CameraInfoConstPtr msg_camera_info)
-{
-    CameraIntrinsics camera_intrinsics;
-    toCameraIntrinsics(msg_camera_info, camera_intrinsics);
-    return camera_intrinsics;
-}
-
-sensor_msgs::CameraInfoPtr toCameraInfo(const CameraIntrinsics& camera_intrinsics)
-{
-    sensor_msgs::CameraInfoPtr msg_camera_info = boost::make_shared<sensor_msgs::CameraInfo>();
-    toCameraInfo(camera_intrinsics, msg_camera_info);
-    return msg_camera_info;
 }

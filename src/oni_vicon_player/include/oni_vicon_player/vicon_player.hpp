@@ -48,7 +48,7 @@
 #ifndef ONI_VICON_PLAYER_VICON_PLAYER_HPP
 #define ONI_VICON_PLAYER_VICON_PLAYER_HPP
 
-#include <depth_sensor_vicon_calibration/transform.hpp>
+#include <oni_vicon_common/transformer.hpp>
 
 // C++/STD
 #include <vector>
@@ -98,20 +98,19 @@ namespace oni_vicon_player
             tf::Pose pose;
         };
 
-    private:
-        typedef depth_sensor_vicon_calibration::Transformer CalibrationTransform;
-
     public:
         ViconPlayer(ros::NodeHandle& node_handle);
         virtual ~ViconPlayer();
 
         bool load(const std::string &source_file,
-                  const CalibrationTransform& calibration_transform,
+                  const oni_vicon::Transformer& calibration_transform,
                   boost::function<void(int64_t)> updateCb);
 
         const PoseRecord& poseRecord(int64_t frame);
 
-        void publish(const PoseRecord& pose_record, sensor_msgs::ImagePtr corresponding_image, const std::string &object_display);
+        void publish(const PoseRecord& pose_record,
+                     sensor_msgs::ImagePtr corresponding_image,
+                     const std::string& object_display);
 
         int64_t countViconFrames();
         int64_t countDepthSensorFrames();

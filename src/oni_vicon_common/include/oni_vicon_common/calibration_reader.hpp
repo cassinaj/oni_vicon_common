@@ -60,14 +60,51 @@
 
 namespace oni_vicon
 {
-    void localCalibrationFrom(const YAML::Node& doc, LocalCalibration& local_calibration);
-    void globalCalibrationFrom(const YAML::Node& doc, GlobalCalibration& global_calibration);
+    class CalibrationReader
+    {
+    public:
+        /**
+         * @brief loadGlobalCalibration
+         * @param source
+         * @param global_calibration
+         * @return
+         */
+        bool loadGlobalCalibration(const std::string& source,
+                                   GlobalCalibration& global_calibration);
 
-    bool loadGlobalCalibration(const std::string& source, LocalCalibration& local_calibration);
-    bool loadLocalCalibration(const std::string& source, GlobalCalibration& global_calibration);
+        /**
+         * @brief loadLocalCalibration
+         * @param source
+         * @param local_calibration
+         * @return
+         */
+        bool loadLocalCalibration(const std::string& source,
+                                  LocalCalibration& local_calibration);
+    private:
+        /**
+         * @brief globalCalibrationFromYaml
+         * @param doc
+         * @param global_calibration
+         */
+        void globalCalibrationFromYaml(const YAML::Node& doc,
+                                       GlobalCalibration& global_calibration);
 
-    void loadCalibrationDoc(const std::string &source, YAML::Node &doc);
-    bool loadCalibration(const std::string& source, const YAML::Node &doc);
+        /**
+         * @brief localCalibrationFromYaml
+         * @param doc
+         * @param local_calibration
+         */
+        void localCalibrationFromYaml(const YAML::Node& doc,
+                                      LocalCalibration& local_calibration);
+
+        /**
+         * @brief loadCalibration
+         * @param source
+         * @param doc
+         * @return
+         */
+        bool loadCalibration(const std::string& source, YAML::Node &doc);
+    };
 
     inline void operator >>(const YAML::Node &node, tf::Vector3& translation)
     {

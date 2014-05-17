@@ -46,6 +46,8 @@
 
 #include <string>
 
+
+#include <oni_vicon_common/type_conversion.hpp>
 #include "oni_vicon_player/oni_player.hpp"
 
 #define CHECK_RC(rc)                                          \
@@ -55,7 +57,7 @@ if (rc != XN_STATUS_OK)                                       \
     return false;                                             \
 }
 
-using namespace depth_sensor_vicon_calibration;
+using namespace oni_vicon;
 using namespace oni_vicon_player;
 
 OniPlayer::OniPlayer():
@@ -80,12 +82,14 @@ bool OniPlayer::open(const std::string& source_file, const CameraIntrinsics& cam
     CHECK_RC(player_.SetPlaybackSpeed(1.0));
     CHECK_RC(player_.SetRepeat(true));
 
+    camera_intrinsics_ = camera_intrinsics;
+
     return true;
 }
 
 bool OniPlayer::processNextFrame()
 {
-    boost::mutex::scoped_lock lock(capture_mutex_);
+    boost::mutex::scoped_lock lock(read_write_mutex_);
 
     CHECK_RC(depth_generator_.WaitAndUpdateData());
 
@@ -111,40 +115,39 @@ bool OniPlayer::close()
     context_.Release();
 }
 
-const xn::DepthMetaData& OniPlayer::depthMetaData() const
+const xn::DepthMetaData& OniPlayer::currentDepthMetaData() const
 {
     return depth_meta_data_;
 }
 
-sensor_msgs::ImagePtr OniPlayer::depthFrameAsMsgImage()
+sensor_msgs::ImagePtr OniPlayer::currentDepthImageMsg()
 {
-    boost::mutex::scoped_lock lock(capture_mutex_);
+    boost::mutex::scoped_lock lock(read_write_mutex_);
 
     if (msg_image_dirty_)
     {
-        msg_image_ = boost::make_shared<sensor_msgs::Image>();
-        toMsgImage(depthMetaData(), msg_image_);
+        cache_msg_image_ = boost::make_shared<sensor_msgs::Image>();
+        toMsgImage(currentDepthMetaData(), cache_msg_image_);
 
         msg_image_dirty_ = false;
     }
 
-    return msg_image_;
+    return cache_msg_image_;
 }
 
-sensor_msgs::PointCloud2Ptr OniPlayer::depthFrameAsMsgPointCloud(
-        const CameraIntrinsics& camera_intrinsics)
+sensor_msgs::PointCloud2Ptr OniPlayer::currentPointCloud2Msg()
 {
-    sensor_msgs::ImagePtr msg_image = depthFrameAsMsgImage();
+    sensor_msgs::ImagePtr msg_image = currentDepthImageMsg();
 
-    boost::mutex::scoped_lock lock(capture_mutex_);
+    boost::mutex::scoped_lock lock(read_write_mutex_);
 
     if (msg_pointcloud_dirty_)
     {
-        msg_pointcloud_ = boost::make_shared<sensor_msgs::PointCloud2>();
-        toMsgPointCloud(msg_image, camera_intrinsics, msg_pointcloud_);
+        cache_msg_pointcloud_ = boost::make_shared<sensor_msgs::PointCloud2>();
+        oni_vicon::toMsgPointCloud(msg_image, camera_intrinsics_, cache_msg_pointcloud_);
     }
 
-    return msg_pointcloud_;
+    return cache_msg_pointcloud_;
 }
 
 XnUInt32 OniPlayer::currentFrameID() const
@@ -182,7 +185,6 @@ bool OniPlayer::setPlaybackSpeed(double speed)
 void OniPlayer::toMsgImage(const xn::DepthMetaData& depth_meta_data,
                            sensor_msgs::ImagePtr image) const
 {
-    // all depth data is relative to the rgb frame since we take registered data by default
     image->encoding = sensor_msgs::image_encodings::TYPE_32FC1;
     image->height = depth_meta_data.YRes();
     image->width = depth_meta_data.XRes();
@@ -200,55 +202,13 @@ void OniPlayer::toMsgImage(const xn::DepthMetaData& depth_meta_data,
     }
 }
 
-void OniPlayer::toMsgPointCloud(const sensor_msgs::ImagePtr& image,
-                                const CameraIntrinsics& camera_intrinsics,
-                                sensor_msgs::PointCloud2Ptr points)
-{
-    points->header.frame_id = image->header.frame_id;
-    points->header.stamp = image->header.stamp;
-    points->height = image->height;
-    points->width = image->width;
-    points->is_dense = false;
-    points->is_bigendian = false;
-    points->fields.resize(3);
-    points->fields[0].name = "x";
-    points->fields[1].name = "y";
-    points->fields[2].name = "z";
-
-    int offset = 0;
-    for (size_t d = 0; d < points->fields.size(); ++d, offset += sizeof(float))
-    {
-        points->fields[d].offset = offset;
-        points->fields[d].datatype = sensor_msgs::PointField::FLOAT32;
-        points->fields[d].count  = 1;
-    }
-
-    points->point_step = offset;
-    points->row_step = points->point_step * points->width;
-    points->data.resize(points->width * points->height * points->point_step);
-
-    const float* depth_data = reinterpret_cast<const float*>(&image->data[0]);
-    float* point_data = reinterpret_cast<float*>(&points->data[0]);
-
-    Point3d p;
-    for(int  y = 0, k = 0; y < image->height; ++y)
-    {
-        for(int x = 0; x < image->width; ++x, ++k, ++point_data)
-        {
-            p = toPoint3d(depth_data[k], x, y, camera_intrinsics);
-
-            *point_data++ = p.x;
-            *point_data++ = p.y;
-            *point_data = p.z;
-        }
-    }
-}
-
 float OniPlayer::toMeter(const XnDepthPixel& depth_pixel) const
 {
     static float bad_point = std::numeric_limits<float>::quiet_NaN();
 
-    if (depth_pixel == 0 || depth_pixel == no_sample_value_ || depth_pixel == shadow_value_)
+    if (depth_pixel == 0 ||
+        depth_pixel == no_sample_value_ ||
+        depth_pixel == shadow_value_)
     {
         return bad_point;
     }
@@ -260,32 +220,12 @@ float OniPlayer::toMillimeter(const XnDepthPixel &depth_pixel) const
 {
     static float bad_point = std::numeric_limits<float>::quiet_NaN();
 
-    if (depth_pixel == 0 || depth_pixel == no_sample_value_ || depth_pixel == shadow_value_)
+    if (depth_pixel == 0 ||
+        depth_pixel == no_sample_value_ ||
+        depth_pixel == shadow_value_)
     {
         return bad_point;
     }
 
     return float(depth_pixel);
-}
-
-OniPlayer::Point3d OniPlayer::toPoint3d(float depth,
-                                        float x,
-                                        float y,
-                                        const CameraIntrinsics& camera_intrinsics) const
-{
-    Point3d point;
-
-    static float bad_point = std::numeric_limits<float>::quiet_NaN();
-
-    if (depth == bad_point)
-    {
-        point.x = point.y = point.z = bad_point;
-        return point;
-    }
-
-    point.z = depth;
-    point.x = (x - camera_intrinsics.cx) * depth / camera_intrinsics.f;
-    point.y = (y - camera_intrinsics.cy) * depth / camera_intrinsics.f;
-
-    return point;
 }

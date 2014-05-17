@@ -59,21 +59,18 @@
 
 #include <ni/XnCppWrapper.h>
 
-#include <depth_sensor_vicon_calibration/transform.hpp>
+#include <oni_vicon_common/types.hpp>
 
 namespace oni_vicon_player
 {
     class OniPlayer
     {
-    private:
-        typedef depth_sensor_vicon_calibration::Transformer::CameraIntrinsics
-                CameraIntrinsics;
-
     public:
         OniPlayer();
         virtual ~OniPlayer();
 
-        bool open(const std::string &source_file, const CameraIntrinsics& camera_intrinsics);
+        bool open(const std::string &source_file, const
+                  oni_vicon::CameraIntrinsics& camera_intrinsics);
         bool processNextFrame();
         bool close();
 
@@ -81,36 +78,24 @@ namespace oni_vicon_player
         bool setPlaybackSpeed(double speed);
 
         XnUInt32 currentFrameID() const;
-        XnUInt32 countFrames() const;
+        const xn::DepthMetaData& currentDepthMetaData() const;
+        sensor_msgs::ImagePtr currentDepthImageMsg();
+        sensor_msgs::PointCloud2Ptr currentPointCloud2Msg();
 
-        const xn::DepthMetaData& depthMetaData() const;
-        sensor_msgs::ImagePtr depthFrameAsMsgImage();
-        sensor_msgs::PointCloud2Ptr depthFrameAsMsgPointCloud(
-                const CameraIntrinsics& camera_intrinsics);
+        XnUInt32 countFrames() const;               
 
-
+    public:
+        /**
+         * @brief toMsgImage converts an ONI depth image into a ros imag e message
+         *
+         * @param [in]   depth_meta_data   OpenNI DepthMetaData
+         * @param [out]  image             Ros image message
+         */
         void toMsgImage(const xn::DepthMetaData& depth_meta_data,
                         sensor_msgs::ImagePtr image) const;
-        void toMsgPointCloud(const sensor_msgs::ImagePtr& image,
-                             const CameraIntrinsics &camera_intrinsics,
-                             sensor_msgs::PointCloud2Ptr points);
-
 
         float toMeter(const XnDepthPixel& depth_pixel) const;
         float toMillimeter(const XnDepthPixel& depth_pixel) const;
-
-    private: /* implementation details */        
-        struct Point3d // simple low cost vector (alternatives, tf::Point/tf::Vector3d)
-        {
-            float x;
-            float y;
-            float z;
-        };
-
-        Point3d toPoint3d(float depth,
-                          float x,
-                          float y,
-                          const CameraIntrinsics& camera_intrinsics) const;
 
     private:
         /* OpenNI player */
@@ -120,15 +105,16 @@ namespace oni_vicon_player
         XnUInt64 no_sample_value_;
         XnUInt64 shadow_value_;
 
+        oni_vicon::CameraIntrinsics camera_intrinsics_;
+        boost::mutex read_write_mutex_;
+
         /* frame data */
         xn::DepthMetaData depth_meta_data_;
         XnUInt32 frames_;
 
-        boost::mutex capture_mutex_;
-
-        sensor_msgs::PointCloud2Ptr msg_pointcloud_;
-        sensor_msgs::ImagePtr msg_image_;
-
+        /* cache */
+        sensor_msgs::PointCloud2Ptr cache_msg_pointcloud_;
+        sensor_msgs::ImagePtr cache_msg_image_;
         bool msg_image_dirty_;
         bool msg_pointcloud_dirty_;
     };

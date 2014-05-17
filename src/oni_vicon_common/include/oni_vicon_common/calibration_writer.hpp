@@ -55,18 +55,57 @@
 #include <yaml-cpp/yaml.h>
 
 #include "oni_vicon_common/types.hpp"
+#include "oni_vicon_common/local_calibration.hpp"
+#include "oni_vicon_common/global_calibration.hpp"
 
 namespace oni_vicon
 {
-    void globalCalibrationTo(YAML::Emitter &doc) const;
-    bool saveGlobalCalibration(const std::string& destination) const;
+    class CalibrationWriter
+    {
+    public:
+        /**
+         * @brief saveLocalCalibration
+         * @param destination
+         * @param local_calibration
+         * @return
+         */
+        bool saveLocalCalibration(const std::string& destination,
+                                  const LocalCalibration &local_calibration);
 
-    void localCalibrationTo(YAML::Emitter &doc) const;
-    bool saveLocalCalibration(const std::string& destination) const;
+        /**
+         * @brief saveLocalCalibration
+         * @param destination
+         * @param global_calibration
+         * @return
+         */
+        bool saveGlobalCalibration(const std::string& destination,
+                                  const GlobalCalibration &global_calibration);
+    private:
+        /**
+         * @brief globalCalibrationToYaml
+         * @param global_calibration
+         * @param doc
+         */
+        void globalCalibrationToYaml(const GlobalCalibration& global_calibration,
+                                     YAML::Emitter &doc);
 
+        /**
+         * @brief localCalibrationToYaml
+         * @param local_calibration
+         * @param doc
+         */
+        void localCalibrationToYaml(const LocalCalibration& local_calibration,
+                                    YAML::Emitter &doc);
 
-    bool saveCalibration(const std::string& destination, const YAML::Emitter &doc) const;
-
+        /**
+         * @brief saveCalibration
+         * @param destination
+         * @param doc
+         * @return
+         */
+        bool saveCalibration(const std::string& destination,
+                             const YAML::Emitter &doc);
+    };
 
     inline YAML::Emitter& operator << (YAML::Emitter& doc, const tf::Vector3& translation)
     {

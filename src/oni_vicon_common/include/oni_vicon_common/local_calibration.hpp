@@ -115,33 +115,33 @@ namespace oni_vicon
          *
          * @param [in] vicon_local_to_camera_local  local transform
          */
-        void viconLocalToCameraLocal(const tf::Transform& vicon_local_to_camera_local) const;
+        void viconLocalToCameraLocal(const tf::Transform& vicon_local_to_camera_local);
 
         /**
-         * Sets the used object mesh Wavefront obj file to calibrate. This shall be used for pose estimation
-         * and tracking. This has usually lower details.
+         * Sets the used object mesh Wavefront obj file to calibrate. This shall be used for pose
+         * estimation and tracking. This has usually lower details.
          *
          * @param [in]  object_mesh   Used object mesh for calibration and tracking.
          */
         void object(const std::string& object_mesh);
 
         /**
-         * Sets the used object mesh Wavefront obj file to calibrate. This shall be used for pose estimation
-         * and tracking. This has usually lower details.
+         * Sets the used object mesh Wavefront obj file to calibrate. This shall be used for pose
+         * estimation and tracking. This has usually lower details.
          *
          * @param [in]  object_mesh_display     Used object mesh for display rendering only
          */
         void objectDisplay(const std::string& object_mesh_display);
 
         /**
-         * @return Used object mesh Wavefront obj file to calibrate. This shall be used for pose estimation
-         * and tracking. This has usually lower details.
+         * @return Used object mesh Wavefront obj file to calibrate. This shall be used for pose
+         * estimation and tracking. This has usually lower details.
          */
         std::string object() const;
 
         /**
-         * @return * Used object mesh Wavefront obj file for display rendering. This is usually higher in
-         * details.
+         * @return * Used object mesh Wavefront obj file for display rendering. This is usually
+         * higher in details.
          */
         std::string objectDisplay() const;
 

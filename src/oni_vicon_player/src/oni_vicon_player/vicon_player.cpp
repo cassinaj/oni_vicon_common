@@ -51,6 +51,7 @@
 
 #include <visualization_msgs/Marker.h>
 
+using namespace oni_vicon;
 using namespace oni_vicon_player;
 
 ViconPlayer::ViconPlayer(ros::NodeHandle& node_handle):
@@ -67,7 +68,7 @@ ViconPlayer::~ViconPlayer()
 }
 
 bool ViconPlayer::load(const std::string& source_file,
-                       const ViconPlayer::CalibrationTransform& calibration_transform,
+                       const Transformer &calibration_transform,
                        boost::function<void(int64_t)> updateCb)
 {    
     std::ifstream data_file(source_file.c_str());
@@ -162,7 +163,7 @@ bool ViconPlayer::load(const std::string& source_file,
         pose_record.pose.setRotation(orientation);
 
         // transform into depth sensor frame
-        pose_record.pose = calibration_transform.viconToDepthSensor(pose_record.pose);
+        pose_record.pose = calibration_transform.viconPoseToCameraPose(pose_record.pose);
 
         data_[record.depth_sensor_frame] = pose_record;
 

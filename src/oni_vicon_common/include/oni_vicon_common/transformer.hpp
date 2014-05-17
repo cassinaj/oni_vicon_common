@@ -49,6 +49,7 @@
 
 #include <boost/shared_ptr.hpp>
 
+#include <ros/ros.h>
 #include <sensor_msgs/CameraInfo.h>
 #include <geometry_msgs/Pose.h>
 #include <tf/tf.h>
@@ -65,43 +66,82 @@ namespace oni_vicon
         typedef boost::shared_ptr<Transformer> Ptr;
 
     public:
+        /**
+         * @brief Transformer identity constructor
+         */
         Transformer();
-        Transformer(const geometry_msgs::Pose& global_calib_transform,
-                    const geometry_msgs::Pose& local_calib_transform);
-        virtual ~Transformer();
 
+        /**
+         * @brief viconPoseToCameraPose Transforms a pose fron the Vicon frame to the camera frame
+         *
+         * @param [in] vicon_pose       Pose in the Vicon global frame
+         *
+         * @return Pose in the camera global frame
+         */
+        tf::Pose viconPoseToCameraPose(const tf::Pose& vicon_pose) const;
+
+        /**
+         * Computes global calibration between Vicon and the camera
+         *
+         * @param camera_info               Camera info used to capture the depth images
+         * @param vicon_reference_frame     Vicon local frame expressed in Vicon frame
+         * @param camera_reference_frame    Object local frame expressed in camera frame
+         */
         void calibrateGlobally(sensor_msgs::CameraInfoConstPtr camera_info,
                                const tf::Pose& vicon_reference_frame,
-                               const tf::Pose& depth_sensor_reference_frame);
+                               const tf::Pose& camera_reference_frame);
+
+        /**
+         * Computes the transform within the object
+         *
+         * @param vicon_reference_frame     Vicon local frame expressed in Vicon frame
+         * @param camera_reference_frame    Object local frame expressed in camera frame
+         * @param object                    Object Wavefront mesh file name used to calibrate
+         * @param object_display            Object Wavefront mesh file name used to display object
+         */
         void calibrateLocally(const tf::Pose& vicon_reference_frame,
-                              const tf::Pose& depth_sensor_reference_frame,
-                              const std::string object,
-                              const std::string object_display);
+                              const tf::Pose& camera_reference_frame,
+                              const std::string& object,
+                              const std::string& object_display);
 
-        tf::Transform globalTransform() const;
-        tf::Transform localTransform() const;
+        /**
+         * @return Global calibration
+         */
+        const GlobalCalibration& globalCalibration() const;
+
+        /**
+         * @return Local calibration
+         */
+        const LocalCalibration& localCalibration() const;
+
+        /**
+         * @brief globalCalibration Sets the global calibration.
+         *
+         * @param [in] global_calibration
+         */
+        void globalCalibration(const GlobalCalibration& global_calibration);
+
+        /**
+         * @brief localCalibration Sets the local calibration
+         *
+         * @param [in] local_calibration
+         */
+        void localCalibration(const LocalCalibration& local_calibration);
+
+        /**
+         * @return Camera intrinsics used to capture the depth images
+         */
         const CameraIntrinsics& cameraIntrinsics() const;
-        tf::Pose viconPoseToCameraPose(const tf::Pose& vicon) const;
 
+        /**
+         * @return Object Wavefront mesh file name used to calibrate
+         */
         std::string object() const;
+
+        /**
+         * @return Object Wavefront mesh file name used to display object
+         */
         std::string objectDisplay() const;
-
-    public:
-        static void toMsgPose(const tf::Pose& tf_pose, geometry_msgs::Pose& msg_pose);
-        static void toTfPose(const geometry_msgs::Pose& msg_pose, tf::Pose& tf_pose);
-        static void toTfTransform(const geometry_msgs::Pose& msg_pose, tf::Transform &tf_trasnform);
-        static void toCameraIntrinsics(sensor_msgs::CameraInfoConstPtr msg_camera_info,
-                                       CameraIntrinsics& camera_intrinsics);
-        static void toCameraInfo(const CameraIntrinsics& camera_intrinsics,
-                                 sensor_msgs::CameraInfoPtr msg_camera_info);
-        static geometry_msgs::Pose toMsgPose(const tf::Pose& tf_pose);
-        static tf::Pose toTfPose(const geometry_msgs::Pose& msg_pose);
-        static tf::Transform toTfTransform(const geometry_msgs::Pose& msg_pose);
-        static CameraIntrinsics toCameraIntrinsics(sensor_msgs::CameraInfoConstPtr msg_camera_info);
-        static sensor_msgs::CameraInfoPtr toCameraInfo(const CameraIntrinsics& camera_intrinsics);
-
-    private:
-
 
     private:
         GlobalCalibration global_calibration_;

@@ -54,13 +54,12 @@ LocalCalibration::LocalCalibration()
 }
 
 void LocalCalibration::calibrate(const tf::Pose& vicon_reference_frame,
-                                 const tf::Pose& depth_sensor_reference_frame,
+                                 const tf::Pose& camera_reference_frame,
                                  const std::string& object_mesh,
                                  const std::string& object_mesh_display)
 {
-    vicon_local_to_camera_local_.mult(depth_sensor_reference_frame.inverse(),
+    vicon_local_to_camera_local_.mult(camera_reference_frame.inverse(),
                                       vicon_reference_frame);
-
     vicon_local_to_camera_local_ = vicon_local_to_camera_local_.inverse();
 
     object_mesh_ = object_mesh;
@@ -72,8 +71,7 @@ const tf::Transform& LocalCalibration::viconLocalToCameraLocal() const
     return vicon_local_to_camera_local_;
 }
 
-void LocalCalibration::viconLocalToCameraLocal(
-        const tf::Transform& vicon_local_to_camera_local) const
+void LocalCalibration::viconLocalToCameraLocal(const tf::Transform& vicon_local_to_camera_local)
 {
     vicon_local_to_camera_local_ = vicon_local_to_camera_local;
 }
@@ -107,12 +105,12 @@ std::string LocalCalibration::objectDisplay() const
     return object_mesh_display_;
 }
 
-std::string LocalCalibration::object(const std::string &object_mesh)
+void LocalCalibration::object(const std::string& object_mesh)
 {
     object_mesh_ = object_mesh;
 }
 
-std::string LocalCalibration::objectDisplay(const std::string &object_mesh_display)
+void LocalCalibration::objectDisplay(const std::string& object_mesh_display)
 {
     object_mesh_display_ = object_mesh_display;
 }

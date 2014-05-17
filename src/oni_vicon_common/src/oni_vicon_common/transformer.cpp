@@ -53,11 +53,6 @@
 // boost
 #include <boost/filesystem.hpp>
 
-// ros
-#if ROS_VERSION_MINIMUM(1, 3, 0)
-#include <sensor_msgs/distortion_models.h>
-#endif
-
 using namespace oni_vicon;
 
 Transformer::Transformer()
@@ -66,20 +61,9 @@ Transformer::Transformer()
     local_calibration_.setIdentity();
 }
 
-Transformer::Transformer(const geometry_msgs::Pose& global_calib_transform,
-                         const geometry_msgs::Pose& local_calib_transform)
+tf::Pose Transformer::viconPoseToCameraPose(const tf::Pose& vicon_pose) const
 {
-    // toTfTransform(global_calib_transform, global_transform_);
-    // toTfTransform(local_calib_transform, local_transform_);
-}
-
-Transformer::~Transformer()
-{
-}
-
-tf::Pose Transformer::viconPoseToCameraPose(const tf::Pose& vicon) const
-{
-    tf::Pose camera_pose = local_calibration_.transformViconLocalToCameraLocal(vicon);
+    tf::Pose camera_pose = local_calibration_.transformViconLocalToCameraLocal(vicon_pose);
     camera_pose = global_calibration_.transformViconToCamera(camera_pose);
 
     return camera_pose;
@@ -87,24 +71,38 @@ tf::Pose Transformer::viconPoseToCameraPose(const tf::Pose& vicon) const
 
 void Transformer::calibrateGlobally(sensor_msgs::CameraInfoConstPtr camera_info,
                                     const tf::Pose& vicon_reference_frame,
-                                    const tf::Pose& depth_sensor_reference_frame)
+                                    const tf::Pose& camera_reference_frame)
 {
-    global_calibration_.calibrate(camera_info, vicon_reference_frame, depth_sensor_reference_frame);
+    global_calibration_.calibrate(camera_info, vicon_reference_frame, camera_reference_frame);
 
     // reset local calibration
     local_calibration_.setIdentity();
 }
 
 void Transformer::calibrateLocally(const tf::Pose& vicon_reference_frame,
-                                            const tf::Pose& depth_sensor_reference_frame,
-                                            const std::string object,
-                                            const std::string object_display)
+                                            const tf::Pose& camera_reference_frame,
+                                            const std::string& object,
+                                            const std::string& object_display)
 {
     // This assumes a given global calibration
-    local_calibration_.calibrate(global_calibration_.viconToCameraTransform(vicon_reference_frame),
-                                 depth_sensor_reference_frame,
+    tf::Pose vicon_reference_frame_in_camera_frame;
+    global_calibration_.transformViconToCamera(vicon_reference_frame,
+                                               vicon_reference_frame_in_camera_frame);
+
+    local_calibration_.calibrate(vicon_reference_frame_in_camera_frame,
+                                 camera_reference_frame,
                                  object,
                                  object_display);
+}
+
+const GlobalCalibration &Transformer::globalCalibration() const
+{
+    return global_calibration_;
+}
+
+const LocalCalibration &Transformer::localCalibration() const
+{
+    return local_calibration_;
 }
 
 const CameraIntrinsics& Transformer::cameraIntrinsics() const
@@ -121,4 +119,18 @@ std::string Transformer::object() const
 std::string Transformer::objectDisplay() const
 {
     return local_calibration_.objectDisplay();
+}
+
+
+void Transformer::globalCalibration(const GlobalCalibration& global_calibration)
+{
+    global_calibration_.viconToCameraTransform(global_calibration.viconToCameraTransform());
+    global_calibration_.cameraIntrinsics(global_calibration.cameraIntrinsics());
+}
+
+void Transformer::localCalibration(const LocalCalibration& local_calibration)
+{
+    local_calibration_.viconLocalToCameraLocal(local_calibration.viconLocalToCameraLocal());
+    local_calibration_.object(local_calibration.object());
+    local_calibration_.objectDisplay(local_calibration.objectDisplay());
 }

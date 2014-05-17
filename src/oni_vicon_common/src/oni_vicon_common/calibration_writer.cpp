@@ -44,126 +44,84 @@
  *   Karlsruhe Institute of Technology (KIT)
  */
 
-#include "oni_vicon_common/calibration_writer.hpp"
+#include <boost/filesystem.hpp>
 
+#include <iostream>
+#include <fstream>
+
+#include "oni_vicon_common/calibration_writer.hpp"
 
 using namespace oni_vicon;
 
-void localCalibrationFrom(const YAML::Node& doc)
+bool CalibrationWriter::saveGlobalCalibration(const std::string& destination,
+                                              const GlobalCalibration& global_calibration)
 {
-    doc["local_calibration"]["vicon_local_to_object_local_frame"] >> local_transform_;
-    doc["local_calibration"]["object_mesh"] >> object_;
-    doc["local_calibration"]["object_mesh_display"] >> object_display_;
+    YAML::Emitter doc;
+    doc.SetIndent(2);
+    try
+    {
+        doc << YAML::BeginMap;
+        globalCalibrationToYaml(global_calibration, doc);
+        doc << YAML::EndMap;
+    }
+    catch(...)
+    {
+        return false;
+    }
+
+    return saveCalibration(destination, doc);
 }
 
-void globalCalibrationFrom(const YAML::Node& doc)
+bool CalibrationWriter::saveLocalCalibration(const std::string& destination,
+                                             const LocalCalibration& local_calibration)
 {
-    const YAML::Node& global_calibration = doc["global_calibration"];
-    const YAML::Node& camera_intrinsics = global_calibration["camera_intrinsics"];
-    const YAML::Node& global_transform = global_calibration["vicon_global_frame"];
+    YAML::Emitter doc;
+    doc.SetIndent(2);
+    try
+    {
+        doc << YAML::BeginMap;
+        localCalibrationToYaml(local_calibration, doc);
+        doc << YAML::EndMap;
+    }
+    catch(...)
+    {
+        return false;
+    }
 
-    global_transform >> global_transform_;
-    camera_intrinsics >> camera_intrinsics_;
+    return saveCalibration(destination, doc);
 }
 
-void localCalibrationTo(YAML::Emitter& doc) const
-{
-    doc << YAML::Key << "local_calibration" << YAML::Value
-           << YAML::BeginMap
-           << YAML::Key << "object_mesh" << YAML::Value << object_
-           << YAML::Key << "object_mesh_display" << YAML::Value << object_display_
-           << YAML::Key << "vicon_local_to_object_local_frame" << YAML::Value << local_transform_
-           << YAML::EndMap;
-}
-
-void globalCalibrationTo(YAML::Emitter& doc) const
+void CalibrationWriter::globalCalibrationToYaml(const GlobalCalibration& global_calibration,
+                                                YAML::Emitter &doc)
 {
     doc << YAML::Key << "global_calibration" << YAML::Value
            << YAML::BeginMap
-           << YAML::Key << "camera_intrinsics" << YAML::Value << camera_intrinsics_
-           << YAML::Key << "vicon_global_frame" << YAML::Value << global_transform_
+           << YAML::Key << "camera_intrinsics"
+           << YAML::Value << global_calibration.cameraIntrinsics()
+           << YAML::Key << "vicon_global_frame"
+           << YAML::Value << global_calibration.viconToCameraTransform()
            << YAML::EndMap;
 }
 
-
-bool saveGlobalCalibration(const std::string& destination) const
+void CalibrationWriter::localCalibrationToYaml(const LocalCalibration& local_calibration,
+                                               YAML::Emitter &doc)
 {
-    YAML::Emitter doc;
-    doc.SetIndent(2);
-    try
-    {
-        doc << YAML::BeginMap;
-        globalCalibrationTo(doc);
-        doc << YAML::EndMap;
-    }
-    catch(...)
-    {
-        return false;
-    }
-
-    return saveCalibration(destination, doc);
+    doc << YAML::Key << "local_calibration" << YAML::Value
+           << YAML::BeginMap
+           << YAML::Key << "object_mesh"
+           << YAML::Value << local_calibration.object()
+           << YAML::Key << "object_mesh_display"
+           << YAML::Value << local_calibration.objectDisplay()
+           << YAML::Key << "vicon_local_to_object_local_frame"
+           << YAML::Value << local_calibration.viconLocalToCameraLocal()
+           << YAML::EndMap;
 }
 
-bool saveLocalCalibration(const std::string &destination) const
-{
-    YAML::Emitter doc;
-    doc.SetIndent(2);
-    try
-    {
-        doc << YAML::BeginMap;
-        localCalibrationTo(doc);
-        doc << YAML::EndMap;
-    }
-    catch(...)
-    {
-        return false;
-    }
-
-    return saveCalibration(destination, doc);
-}
-
-bool loadGlobalCalibration(const std::string& source)
-{
-    try
-    {
-        YAML::Node doc;
-        loadCalibrationDoc(source, doc);
-        globalCalibrationFrom(doc);
-    }
-    catch(YAML::ParserException& e) {
-        std::cout << e.what() << "\n";
-        return false;
-    }
-
-    return true;
-}
-
-bool loadLocalCalibration(const std::string &source)
-{
-    try
-    {
-        YAML::Node doc;
-        loadCalibrationDoc(source, doc);
-        localCalibrationFrom(doc);
-    }
-    catch(YAML::ParserException& e) {
-        std::cout << e.what() << "\n";
-        return false;
-    }
-
-    return true;
-}
-
-bool saveCalibration(const std::string& destination, const YAML::Emitter& doc) const
+bool CalibrationWriter::saveCalibration(const std::string& destination, const YAML::Emitter& doc)
 {
     std::ofstream calibration_file;
     boost::filesystem::path dir(destination);
-
-    if (!boost::filesystem::create_directories(dir.remove_filename()))
-    {
-        // ignore, since it might exist already
-        // return false;
-    }
+    boost::filesystem::create_directories(dir.remove_filename());
 
     calibration_file.open(destination.c_str());
     if (calibration_file.is_open())
@@ -176,4 +134,3 @@ bool saveCalibration(const std::string& destination, const YAML::Emitter& doc) c
 
     return false;
 }
-
