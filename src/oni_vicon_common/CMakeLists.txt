@@ -91,7 +91,6 @@ include_directories(include
 )
 
 set(oni_vicon_common_HEADERS
-    include/${PROJECT_NAME}/action_macros.hpp
     include/${PROJECT_NAME}/types.hpp
     include/${PROJECT_NAME}/type_conversion.hpp
     include/${PROJECT_NAME}/transformer.hpp

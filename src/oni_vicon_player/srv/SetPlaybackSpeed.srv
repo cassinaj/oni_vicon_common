@@ -1,4 +1,0 @@
-string SERVICE_NAME=/oni_vicon_player/SetPlaybackSpeed
-
-float32 speed
----
